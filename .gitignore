@@ -1,0 +1,17 @@
+cat << 'EOF' > .gitignore
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+credentials.json
+data/*.mp3
+data/_reply.mp3
+data/maggie.pid
+data/memory/*.db
+data/logs/*.log
+*.log
+.vscode/
+.idea/
+.DS_Store
+EOF

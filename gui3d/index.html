@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MAGGIE LIVE SYSTEM DASHBOARD</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --cyan: #52fefe;
+    --gold: #f0a860;
+    --green: #6bffb0;
+    --red: #ff5b6a;
+    --dim: rgba(82, 254, 254, 0.45);
+    --panel-bg: rgba(4, 12, 18, 0.85);
+    --panel-border: rgba(82, 254, 254, 0.2);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: #020609; font-family: 'Segoe UI', system-ui, monospace; color: var(--cyan); }
+
+  canvas#glCanvas { position: absolute; inset: 0; z-index: 1; }
+
+  #dashboard {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    display: grid; grid-template-columns: 340px 1fr 360px; grid-template-rows: auto 1fr auto;
+    padding: 20px; gap: 16px;
+  }
+
+  /* Text-Only Panels - No Shapes or Corner Cutouts */
+  .panel {
+    background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px;
+    padding: 14px; backdrop-filter: blur(6px); pointer-events: auto;
+  }
+  .panel-title { font-size: 12px; letter-spacing: 2px; font-weight: 700; color: var(--gold); margin-bottom: 10px; text-shadow: 0 0 8px rgba(240, 168, 96, 0.4); }
+
+  /* Header */
+  .header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px; }
+  .brand { font-size: 24px; font-weight: 400; letter-spacing: 8px; color: #fff; text-shadow: 0 0 15px var(--cyan); }
+  .badge { padding: 4px 14px; border-radius: 4px; border: 1px solid var(--cyan); font-size: 12px; letter-spacing: 2px; font-weight: 700; }
+  .badge.speaking { color: var(--cyan); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* Columns */
+  .col-left { grid-column: 1; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+  .col-center { grid-column: 2; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+  .col-right { grid-column: 3; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+  /* Data Row Text - Scaled Up for Legibility (+2pt) */
+  .data-row { display: flex; justify-content: space-between; font-size: 12.5px; margin: 5px 0; color: #d0f0fb; }
+  .data-val { font-weight: 600; color: #fff; }
+  .status-tag.running { color: var(--green); }
+  .status-tag.stopped { color: var(--red); }
+
+  /* Top Processes Table (+2pt) */
+  table.proc-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+  table.proc-table th { color: var(--dim); padding-bottom: 6px; font-weight: 500; }
+  table.proc-table td { padding: 4px 0; color: #fff; }
+
+  /* Bottom Controls Bar */
+  .bottom-bar { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; font-size: 12px; letter-spacing: 2px; color: var(--dim); border-top: 1px solid var(--panel-border); padding-top: 10px; }
+
+  #transcript {
+    align-self: center; text-align: center; font-size: 18px; font-weight: 300; letter-spacing: 1px;
+    color: #e2f1af; text-shadow: 0 0 15px rgba(226, 241, 175, 0.8); max-width: 80%;
+    opacity: 0; transition: opacity 0.5s ease;
+  }
+  #transcript.visible { opacity: 1; }
+
+  /* Bottom-Right Corner Square Map Overlay (350px x 350px) */
+  #squareMapPanel {
+    position: absolute; bottom: 50px; right: 24px; z-index: 10;
+    width: 350px; height: 350px; border-radius: 4px;
+    border: 1px solid var(--panel-border); background: var(--panel-bg);
+    box-shadow: 0 0 25px rgba(0, 0, 0, 0.9); pointer-events: auto;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  #squareMapTitle { font-size: 11px; letter-spacing: 2px; font-weight: 700; color: var(--gold); padding: 6px 8px; background: rgba(2, 6, 9, 0.9); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; }
+  #mapContainer { width: 100%; flex: 1; }
+</style>
+</head>
+<body>
+
+<canvas id="glCanvas"></canvas>
+
+<div id="dashboard">
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <span class="brand">MAGGIE</span>
+      <span style="font-size: 12px; letter-spacing: 2px; color: var(--dim); margin-left: 10px;">SYSTEM INTELLIGENCE DASHBOARD</span>
+    </div>
+    <div class="badge" id="stateBadge">IDLE</div>
+  </div>
+
+  <!-- Left Column -->
+  <div class="col-left">
+    <!-- CPU & RAM -->
+    <div class="panel">
+      <div class="panel-title">  HARDWARE TELEMETRY</div>
+      <div class="data-row"><span>CPU Overall</span><span class="data-val" id="cpuPct">0%</span></div>
+      <div class="data-row"><span>Load Average</span><span class="data-val" id="loadAvg">0.0, 0.0, 0.0</span></div>
+      <div class="data-row"><span>RAM Allocation</span><span class="data-val" id="ramInfo">0 GB / 0 GB</span></div>
+      <div class="data-row"><span>Swap Usage</span><span class="data-val" id="swapInfo">0 GB / 0 GB</span></div>
+      <div class="data-row"><span>Disk Space</span><span class="data-val" id="diskInfo">0 GB / 0 GB</span></div>
+      <div class="data-row"><span>CPU Temp</span><span class="data-val" id="cpuTemp">0&deg;C</span></div>
+      <div class="data-row"><span>Battery Status</span><span class="data-val" id="batInfo">100%</span></div>
+    </div>
+
+    <!-- Running Processes -->
+    <div class="panel">
+      <div class="panel-title">  TOP RUNNING PROCESSES</div>
+      <table class="proc-table">
+        <thead>
+          <tr><th>NAME</th><th>CPU</th><th>RAM</th></tr>
+        </thead>
+        <tbody id="procRows">
+          <tr><td>python3</td><td>0%</td><td>0MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Network Intelligence -->
+    <div class="panel">
+      <div class="panel-title">  NETWORK & PING LATENCY</div>
+      <div class="data-row"><span>Gateway (192.168.1.1)</span><span class="data-val" id="pingGw">--</span></div>
+      <div class="data-row"><span>DNS Server (8.8.8.8)</span><span class="data-val" id="pingDns">--</span></div>
+      <div class="data-row"><span>Interface</span><span class="data-val">enp3s0 (Active)</span></div>
+    </div>
+  </div>
+
+  <!-- Center Column -->
+  <div class="col-center">
+    <div></div>
+    <div id="transcript"></div>
+    <div></div>
+  </div>
+
+  <!-- Right Column -->
+  <div class="col-right">
+    <!-- Services -->
+    <div class="panel">
+      <div class="panel-title">  SYSTEM SERVICES</div>
+      <div id="servicesList">
+        <div class="data-row"><span>Maggie AI</span><span class="status-tag running">&bullet; Running</span></div>
+      </div>
+    </div>
+
+    <!-- Maggie Health -->
+    <div class="panel">
+      <div class="panel-title">  MAGGIE HEALTH</div>
+      <div id="healthList">
+        <div class="data-row"><span>AI Engine</span><span class="status-tag running">&bullet; READY</span></div>
+        <div class="data-row"><span>STT / Voice Input</span><span class="status-tag running">&bullet; READY</span></div>
+        <div class="data-row"><span>TTS / Speaker Output</span><span class="status-tag running">&bullet; READY</span></div>
+        <div class="data-row"><span>Memory Database</span><span class="status-tag running">&bullet; READY</span></div>
+      </div>
+    </div>
+
+    <!-- AI Performance -->
+    <div class="panel">
+      <div class="panel-title">  AI PERFORMANCE & ENGINE</div>
+      <div class="data-row"><span>Model</span><span class="data-val" id="aiModel">llama-3.3-70b</span></div>
+      <div class="data-row"><span>Backend</span><span class="data-val" id="aiBackend">Groq / Local</span></div>
+      <div class="data-row"><span>Response Latency</span><span class="data-val" id="aiLatency">0.82 s</span></div>
+    </div>
+  </div>
+
+  <!-- Bottom Controls Bar -->
+  <div class="bottom-bar">
+    <span>MIC ACTIVE &middot; VOICE CONTROLS READY</span>
+    <span id="clockText">--:--:--</span>
+  </div>
+</div>
+
+<!-- Bottom-Right Square Map Floating Widget (350x350) -->
+<div id="squareMapPanel">
+  <div id="squareMapTitle"><span>LIVE TRAFFIC MONITOR</span><span id="trafficEta">--</span></div>
+  <div id="mapContainer"></div>
+</div>
+
+<script>
+// Canvas Renderer
+const canvas = document.getElementById('glCanvas');
+const ctx = canvas.getContext('2d');
+let cx, cy;
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; cx = canvas.width / 2; cy = canvas.height / 2 - 10; }
+window.addEventListener('resize', resize); resize();
+
+let angle1 = 0, angle2 = 0, scale = 1, targetScale = 1, currentState = "idle";
+
+function render() {
+  ctx.fillStyle = 'rgba(2, 6, 9, 0.25)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  angle1 += 0.008; angle2 -= 0.012; scale += (targetScale - scale) * 0.08;
+  ctx.save(); ctx.translate(cx, cy);
+
+  ctx.strokeStyle = '#1b4e5f'; ctx.lineWidth = 5 * scale; ctx.shadowBlur = 15; ctx.shadowColor = '#52fefe';
+  ctx.beginPath(); ctx.arc(0, 0, 120 * scale, 0, Math.PI * 2); ctx.stroke();
+
+  ctx.save(); ctx.rotate(angle1);
+  for (let i = 0; i < 10; i++) {
+    ctx.rotate((Math.PI * 2) / 10); ctx.fillStyle = '#073c4b'; ctx.strokeStyle = '#52fefe'; ctx.lineWidth = 1;
+    ctx.fillRect(100 * scale, -8, 20 * scale, 16); ctx.strokeRect(100 * scale, -8, 20 * scale, 16);
+  }
+  ctx.restore();
+
+  ctx.fillStyle = currentState === "speaking" ? '#f0a860' : '#ffffff'; ctx.shadowBlur = 30;
+  ctx.shadowColor = currentState === "speaking" ? '#f0a860' : '#52fefe';
+  ctx.beginPath(); ctx.arc(0, 0, 32 * scale, 0, Math.PI * 2); ctx.fill();
+  ctx.restore(); requestAnimationFrame(render);
+}
+render();
+
+// Leaflet Map Initialization with High-Contrast Transport Style for Traffic Visibility
+const map = L.map('mapContainer', { zoomControl: false }).setView([12.9716, 77.5946], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+let routeLayer = null;
+
+// Live Telemetry Sync
+let lastAnswer = null, fadeTimeout = null;
+
+async function syncState() {
+  if (window.pywebview && window.pywebview.api) {
+    try {
+      const data = await window.pywebview.api.get_status();
+      currentState = data.state || "idle";
+
+      const badge = document.getElementById('stateBadge');
+      badge.textContent = currentState.toUpperCase();
+      badge.className = 'badge ' + currentState;
+
+      if (data.metrics) {
+        const m = data.metrics;
+        document.getElementById('cpuPct').textContent = (m.cpu_pct || 0) + '%';
+        document.getElementById('loadAvg').textContent = (m.load_avg || [0,0,0]).join(', ');
+        document.getElementById('ramInfo').textContent = (m.ram_used_gb || 0) + ' GB / ' + (m.ram_total_gb || 0) + ' GB (' + (m.ram_pct || 0) + '%)';
+        document.getElementById('swapInfo').textContent = (m.swap_used_gb || 0) + ' GB / ' + (m.swap_total_gb || 0) + ' GB';
+        document.getElementById('diskInfo').textContent = (m.disk_used_gb || 0) + ' GB / ' + (m.disk_total_gb || 0) + ' GB (' + (m.disk_pct || 0) + '%)';
+        document.getElementById('cpuTemp').textContent = Math.round(m.cpu_temp || 45) + '°C';
+        document.getElementById('batInfo').textContent = (m.battery_pct || 100) + '%' + (m.charging ? ' [Charging]' : '');
+        document.getElementById('pingGw').textContent = m.ping_gateway || '--';
+        document.getElementById('pingDns').textContent = m.ping_dns || '--';
+
+        if (m.top_processes) {
+          const tbody = document.getElementById('procRows');
+          tbody.innerHTML = m.top_processes.map(p => `<tr><td>${p.name}</td><td>${p.cpu}%</td><td>${p.ram_mb}MB</td></tr>`).join('');
+        }
+      }
+
+      if (data.services) {
+        const container = document.getElementById('servicesList');
+        container.innerHTML = Object.entries(data.services).map(([name, status]) => {
+          const isRunning = status === 'Running';
+          return `<div class="data-row"><span>${name}</span><span class="status-tag ${isRunning ? 'running' : 'stopped'}">${isRunning ? '&bullet; Running' : '&bullet; Stopped'}</span></div>`;
+        }).join('');
+      }
+
+      // Render Enhanced High-Visibility Traffic Line
+      if (data.traffic_map && data.traffic_map.origin_lat) {
+        const tm = data.traffic_map;
+        if (routeLayer) map.removeLayer(routeLayer);
+        
+        const p1 = [tm.origin_lat, tm.origin_lon];
+        const p2 = [tm.dest_lat, tm.dest_lon];
+
+        // Dynamic Color Coding Based on Traffic Multiplier
+        let lineColor = '#6bffb0'; // Green = Clear
+        if (tm.traffic_level === 'HEAVY') lineColor = '#ff5b6a'; // Red = Heavy
+        else if (tm.traffic_level === 'MODERATE') lineColor = '#f0a860'; // Yellow = Moderate
+
+        document.getElementById('trafficEta').textContent = tm.estimated_mins + " mins";
+
+        routeLayer = L.layerGroup([
+          L.marker(p1),
+          L.marker(p2),
+          L.polyline([p1, p2], { color: lineColor, weight: 6, opacity: 0.9 })
+        ]).addTo(map);
+
+        map.invalidateSize();
+        map.fitBounds([p1, p2], { padding: [15, 15] });
+      }
+
+      targetScale = currentState === "speaking" ? 1.25 : currentState === "listening" ? 1.1 : 1.0;
+
+      if (data.answer && lastAnswer !== null && data.answer !== lastAnswer) {
+        lastAnswer = data.answer;
+        const pop = document.getElementById('transcript');
+        pop.textContent = data.answer;
+        pop.classList.add('visible');
+        if (fadeTimeout) clearTimeout(fadeTimeout);
+        fadeTimeout = setTimeout(() => pop.classList.remove('visible'), 5000);
+      } else if (lastAnswer === null) {
+        lastAnswer = data.answer || "";
+      }
+    } catch(e) {}
+  }
+}
+
+setInterval(syncState, 500);
+function updateClock() { document.getElementById('clockText').textContent = new Date().toLocaleTimeString(); }
+setInterval(updateClock, 1000); updateClock();
+</script>
+</body>
+</html>
