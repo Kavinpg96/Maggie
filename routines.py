@@ -3,6 +3,11 @@ Proactive daily reminders -- separate from one-off alarms (alarms.py).
 A routine fires every day at a set time until removed, e.g.
 "remind me every day at 7pm to stretch". Checked once a minute; each
 routine fires at most once per calendar day.
+
+Routines have a "kind": "reminder" (default, speaks the stored label
+verbatim) or "briefing" (speaks a freshly-built greeting + news update
+instead of a static label -- content is generated at fire time, not
+stored, so it's always current).
 """
 import json
 import os
@@ -61,15 +66,39 @@ def parse_routine(text: str):
     return hour, minute, label
 
 
-def add_routine(hour: int, minute: int, label: str):
+def add_routine(hour: int, minute: int, label: str, kind: str = "reminder"):
     with _lock:
         routines = _load()
-        routines.append({"hour": hour, "minute": minute, "label": label, "last_fired": ""})
+        routines.append({
+            "hour": hour, "minute": minute, "label": label,
+            "last_fired": "", "kind": kind,
+        })
         _save(routines)
 
 
 def list_routines():
     return _load()
+
+
+def _build_briefing_text() -> str:
+    """Builds fresh greeting + news content at fire time. Imported lazily
+    to avoid any import-order issues at module load."""
+    import greeting
+    import web_answer
+
+    parts = []
+    try:
+        parts.append(greeting.build_greeting("Kavin"))
+    except Exception:
+        pass
+    try:
+        news = web_answer.fetch_news("India Tamil Nadu news today")
+        if news and "failed" not in news.lower():
+            parts.append(news)
+    except Exception:
+        pass
+
+    return " ".join(parts) if parts else "Good morning, Kavin."
 
 
 def _checker_loop(on_trigger):
@@ -82,7 +111,10 @@ def _checker_loop(on_trigger):
                 changed = False
                 for r in routines:
                     if r["hour"] == now.hour and r["minute"] == now.minute and r.get("last_fired") != today:
-                        on_trigger(f"Reminder: {r['label']}.")
+                        if r.get("kind") == "briefing":
+                            on_trigger(_build_briefing_text())
+                        else:
+                            on_trigger(f"Reminder: {r['label']}.")
                         r["last_fired"] = today
                         changed = True
                 if changed:

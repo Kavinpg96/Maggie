@@ -1,13 +1,13 @@
 """
 system_control.py - Local Execution Engine
-Handles app launching and web/social navigation.
-Song and video playback now live in brain.py (section 3.4) + music.py,
-so this file no longer touches "play" commands at all.
+Handles app launching, web actions, media playback, and social navigation.
 """
+import re
 import subprocess
 import webbrowser
+from rich.console import Console
 
-import applog
+console = Console()
 
 WEB_SITES = {
     "gmail": "https://mail.google.com",
@@ -32,36 +32,44 @@ APP_COMMANDS = {
     "calculator": ["gnome-calculator"],
 }
 
+_PLAY_RE = re.compile(r"\bplay\b", re.IGNORECASE)
+_FILLER_RE = re.compile(
+    r"\b(ok|okay|please|can you|could you|would you|hey|maggie|"
+    r"a song|song|for me|in youtube|on youtube|youtube|track|music)\b",
+    re.IGNORECASE,
+)
 
-def _open_in_app(url: str, title: str = "Maggie Browser") -> bool:
-    """Opens `url` as a second window of Maggie's own pywebview process
-    instead of launching external Chrome. Returns False on failure so
-    the caller falls back to webbrowser.open()."""
-    try:
-        import webview
-        webview.create_window(title, url, width=1100, height=750)
-        return True
-    except Exception as e:
-        applog.log(f"In-app window failed, falling back to external browser: {e}", style="yellow")
-        return False
+
+def _extract_song(query: str) -> str:
+    """Strips wake words / politeness / filler from a play command,
+    e.g. 'ok play a song for me in youtube tamil song' -> 'tamil'."""
+    cleaned = _PLAY_RE.sub("", query)
+    cleaned = _FILLER_RE.sub("", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def handle_execution(query: str):
     q = query.lower().strip()
 
-    # Skip entirely if this is a play/song/video request -- brain.py's
-    # music.py-based handler owns those now. Without this, "open youtube
-    # and play X" would match the open-site block below and return early
-    # with a bare "Opening Youtube." before the real play intent is seen.
-    if "play" in q:
-        return None
+    # Play song on YouTube - matches "play" anywhere in the sentence,
+    # not just at the very start, so "ok play <song>" works too.
+    if _PLAY_RE.search(q):
+        song = _extract_song(q)
+        if song:
+            try:
+                import pywhatkit
+                pywhatkit.playonyt(song)
+                return f"Playing {song} on YouTube."
+            except Exception:
+                webbrowser.open(f"https://www.youtube.com/results?search_query={song}")
+                return f"Searching and playing {song} on YouTube."
+        return "What would you like me to play?"
 
     # Open Social / Web / Apps
     if "open" in q or "launch" in q or "go to" in q:
         for site, url in WEB_SITES.items():
             if site in q:
-                if not _open_in_app(url, site.capitalize()):
-                    webbrowser.open(url)
+                webbrowser.open(url)
                 return f"Opening {site.capitalize()}."
 
         for app, cmd in APP_COMMANDS.items():

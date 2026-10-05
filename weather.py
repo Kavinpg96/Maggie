@@ -1,10 +1,18 @@
 """
 Free, no-API-key weather lookup.
-1. Approximate location from IP -- tries a few free geolocation services
-   in order, since any single one can rate-limit or go down.
+1. Weather lookup may use an approximate location from IP; it is not used
+   as Maggie's answer to "where am I".
 2. Current weather for that location from Open-Meteo (free, no key).
 """
+import math
+import threading
+import time
 import requests
+
+_device_location_lock = threading.Lock()
+_device_location = None
+_MAX_DEVICE_LOCATION_ACCURACY_METERS = 100
+_DEVICE_LOCATION_MAX_AGE_SECONDS = 300
 
 _WEATHER_CODES = {
     0: "clear sky", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
@@ -17,6 +25,62 @@ _WEATHER_CODES = {
 
 def _describe(code: int) -> str:
     return _WEATHER_CODES.get(code, "unusual weather")
+
+
+def get_current_location() -> dict:
+    """Return a verified device fix; never mistake IP geolocation for current location."""
+    global _device_location
+
+    with _device_location_lock:
+        if _device_location is not None:
+            if time.time() - _device_location["captured_at"] <= _DEVICE_LOCATION_MAX_AGE_SECONDS:
+                return dict(_device_location)
+            _device_location = None
+
+    raise RuntimeError(
+        "No verified device location is available. IP-based location was disabled "
+        "because it can identify the wrong city."
+    )
+
+
+def set_device_location(latitude, longitude, accuracy_meters=None) -> dict:
+    """Cache coordinates received after the user enables device location."""
+    global _device_location
+
+    latitude = float(latitude)
+    longitude = float(longitude)
+    if not (math.isfinite(latitude) and math.isfinite(longitude)):
+        raise ValueError("location coordinates must be finite numbers")
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        raise ValueError("location coordinates are outside valid ranges")
+
+    if accuracy_meters is not None:
+        accuracy_meters = float(accuracy_meters)
+        if not math.isfinite(accuracy_meters) or accuracy_meters < 0:
+            raise ValueError("location accuracy must be a non-negative number")
+        if accuracy_meters > _MAX_DEVICE_LOCATION_ACCURACY_METERS:
+            raise ValueError(
+                "device location is too imprecise "
+                f"(reported accuracy ±{round(accuracy_meters)} m)"
+            )
+    else:
+        raise ValueError("the device did not report location accuracy")
+
+    place = f"{latitude:.5f}, {longitude:.5f}"
+    accuracy = f"browser/OS location fix (reported accuracy ±{round(accuracy_meters)} m)"
+
+    location = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "place": place,
+        "accuracy": accuracy,
+        "accuracy_meters": accuracy_meters,
+        "source": "device",
+        "captured_at": time.time(),
+    }
+    with _device_location_lock:
+        _device_location = location
+    return dict(location)
 
 
 def _geolocate():

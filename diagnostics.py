@@ -19,7 +19,12 @@ def run_self_test() -> str:
     # 2. Hardware Checks
     mics_ok = bool(sr.Microphone.list_microphone_names())
     db_ok = os.path.exists(DB_PATH)
-    audio_ok = bool(shutil.which("mpg123") or shutil.which("afplay"))
+    audio_ok = bool(
+        shutil.which("mpg123")
+        or shutil.which("ffplay")
+        or shutil.which("mpv")
+        or shutil.which("afplay")
+    )
 
     # 3. Services Check
     services = services_check.get_all_services_status()
@@ -34,6 +39,7 @@ def run_self_test() -> str:
         f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] SELF-TEST & OPTIMIZATION REPORT:\n"
         f"- Memory Garbage Collection: Completed\n"
         f"- Microphone: {'OPERATIONAL' if mics_ok else 'OFFLINE'}\n"
+        f"- Speech Playback: {'OPERATIONAL' if audio_ok else 'OFFLINE'}\n"
         f"- Memory Database: {'CONNECTED' if db_ok else 'MISSING'}\n"
         f"- Hardware Load: CPU {cpu}%, RAM {ram}%\n"
         f"- Active Services: {', '.join(running_services)}\n"

@@ -102,7 +102,9 @@ def _telemetry_loop(on_critical_failure):
             status.set_metrics(**telemetry)
         except Exception:
             pass
-        time.sleep(1.5)
+        # Telemetry includes two blocking ping subprocesses; polling every 1.5s
+        # needlessly competes with the GUI and speech threads.
+        time.sleep(10)
 
 def start(on_critical_failure=None):
     threading.Thread(target=_telemetry_loop, args=(on_critical_failure,), daemon=True).start()

@@ -2,301 +2,1552 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>MAGGIE LIVE SYSTEM DASHBOARD</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<title>Maggie</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
-    --cyan: #52fefe;
-    --gold: #f0a860;
-    --green: #6bffb0;
-    --red: #ff5b6a;
-    --dim: rgba(82, 254, 254, 0.45);
-    --panel-bg: rgba(4, 12, 18, 0.85);
-    --panel-border: rgba(82, 254, 254, 0.2);
+    --bg-deep: #030307;
+    --glass-bg: rgba(18, 20, 29, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glow-cyan: #00f2fe;
+    --glow-magenta: #fe0979;
+    --glow-violet: #7f00ff;
+    --glow-amber: #ff9900;
+    --text-main: #f8fafc;
+    --text-muted: #64748b;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100vw; height: 100vh; overflow: hidden; background: #020609; font-family: 'Segoe UI', system-ui, monospace; color: var(--cyan); }
 
-  canvas#glCanvas { position: absolute; inset: 0; z-index: 1; }
-
-  #dashboard {
-    position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    display: grid; grid-template-columns: 340px 1fr 360px; grid-template-rows: auto 1fr auto;
-    padding: 20px; gap: 16px;
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg-deep);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    color: var(--text-main);
   }
 
-  /* Text-Only Panels - No Shapes or Corner Cutouts */
-  .panel {
-    background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 4px;
-    padding: 14px; backdrop-filter: blur(6px); pointer-events: auto;
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(127, 0, 255, 0.08) 0%, transparent 65%),
+                radial-gradient(circle at 80% 20%, rgba(0, 242, 254, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 20% 80%, rgba(254, 9, 121, 0.05) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 1;
   }
-  .panel-title { font-size: 12px; letter-spacing: 2px; font-weight: 700; color: var(--gold); margin-bottom: 10px; text-shadow: 0 0 8px rgba(240, 168, 96, 0.4); }
 
-  /* Header */
-  .header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px; }
-  .brand { font-size: 24px; font-weight: 400; letter-spacing: 8px; color: #fff; text-shadow: 0 0 15px var(--cyan); }
-  .badge { padding: 4px 14px; border-radius: 4px; border: 1px solid var(--cyan); font-size: 12px; letter-spacing: 2px; font-weight: 700; }
-  .badge.speaking { color: var(--cyan); animation: pulse 1s infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-
-  /* Columns */
-  .col-left { grid-column: 1; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
-  .col-center { grid-column: 2; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
-  .col-right { grid-column: 3; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
-
-  /* Data Row Text - Scaled Up for Legibility (+2pt) */
-  .data-row { display: flex; justify-content: space-between; font-size: 12.5px; margin: 5px 0; color: #d0f0fb; }
-  .data-val { font-weight: 600; color: #fff; }
-  .status-tag.running { color: var(--green); }
-  .status-tag.stopped { color: var(--red); }
-
-  /* Top Processes Table (+2pt) */
-  table.proc-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
-  table.proc-table th { color: var(--dim); padding-bottom: 6px; font-weight: 500; }
-  table.proc-table td { padding: 4px 0; color: #fff; }
-
-  /* Bottom Controls Bar */
-  .bottom-bar { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; font-size: 12px; letter-spacing: 2px; color: var(--dim); border-top: 1px solid var(--panel-border); padding-top: 10px; }
-
-  #transcript {
-    align-self: center; text-align: center; font-size: 18px; font-weight: 300; letter-spacing: 1px;
-    color: #e2f1af; text-shadow: 0 0 15px rgba(226, 241, 175, 0.8); max-width: 80%;
-    opacity: 0; transition: opacity 0.5s ease;
+  canvas#coreCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
   }
-  #transcript.visible { opacity: 1; }
 
-  /* Bottom-Right Corner Square Map Overlay (350px x 350px) */
+  .ui-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 32px 40px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: auto;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .neural-node {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--glow-cyan);
+    box-shadow: 0 0 16px var(--glow-cyan);
+    animation: beaconPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    transition: background 0.5s ease, box-shadow 0.5s ease;
+  }
+
+  @keyframes beaconPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.85); }
+  }
+
+  .brand-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 0 20px rgba(255,255,255,0.2);
+  }
+
+  .state-capsule {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    padding: 8px 20px;
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  }
+
+  .state-pip {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--glow-cyan);
+    box-shadow: 0 0 12px var(--glow-cyan);
+    transition: background 0.5s ease, box-shadow 0.5s ease;
+  }
+
+  .stage-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    pointer-events: none;
+    max-width: 820px;
+    margin: 0 auto;
+    transform: translateY(-20px);
+  }
+
+  .transcription-box {
+    font-size: clamp(20px, 3vw, 32px);
+    font-weight: 300;
+    line-height: 1.4;
+    letter-spacing: -0.02em;
+    color: rgba(255, 255, 255, 0.95);
+    min-height: 80px;
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    text-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+  }
+
+  .transcription-box.active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .core-metrics {
+    display: flex;
+    gap: 32px;
+    margin-top: 24px;
+    opacity: 0.6;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: auto;
+  }
+
+  .status-line {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.03em;
+  }
+
+  .side-col {
+    position: absolute; top: 90px; bottom: 85px; z-index: 4;
+    width: 290px; display: flex; flex-direction: column; gap: 14px;
+    overflow-y: auto; pointer-events: auto;
+  }
+  .side-col.left { left: 40px; }
+  .side-col.right { right: 40px; }
+  .side-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-radius: 18px;
+    padding: 16px 18px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  }
+  .side-panel-title {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;
+  }
+  .side-row {
+    display: flex; justify-content: space-between; font-size: 12px;
+    margin: 6px 0; color: var(--text-muted);
+  }
+  .side-val { color: var(--text-main); font-family: 'JetBrains Mono', monospace; }
+  .side-status.running { color: var(--glow-cyan); }
+  .side-status.stopped { color: var(--glow-magenta); }
+
+  .proc-table { width: 100%; border-collapse: collapse; font-size: 11.5px; text-align: left; font-family: 'JetBrains Mono', monospace; }
+  .proc-table th { color: var(--text-muted); padding-bottom: 6px; font-weight: 500; }
+  .proc-table td { padding: 4px 0; color: var(--text-main); }
+
+  #terminalLog {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6;
+    color: var(--text-muted); white-space: pre-wrap;
+  }
+  #terminalLog div:last-child { color: var(--text-main); }
+
+  #dashboardDock {
+    position: absolute; left: 340px; right: 340px; bottom: 85px; z-index: 6;
+    height: min(56vh, 540px); max-height: calc(100vh - 160px);
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+    grid-template-rows: minmax(0, 1fr); align-items: stretch; pointer-events: none;
+  }
+  #dashboardDock > * {
+    min-width: 0; min-height: 0; overflow: hidden; padding: 12px;
+    border-radius: 18px; border: 1px solid var(--glass-border);
+    background: linear-gradient(145deg, rgba(18, 26, 38, 0.97), rgba(7, 11, 19, 0.96));
+    backdrop-filter: blur(24px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+  }
+  #dashboardWidgetDeck { display: flex; flex-direction: column; }
+  #trafficPanel, #marketPanel { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+  #trafficHeading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #trafficHeading .side-panel-title { margin: 0; }
+  #trafficStatus { color: var(--glow-amber); font-size: 11px; font-weight: 700; }
+  #trafficStatus.light { color: #5df2b2; }
+  #trafficStatus.moderate { color: #ffd27a; }
+  #trafficStatus.heavy { color: #ff738f; }
+  #trafficMap {
+    flex: 1 1 180px; min-height: 150px; border-radius: 10px; overflow: hidden;
+    background: rgba(255,255,255,0.05); color: var(--text-muted);
+  }
+  #trafficStats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+  .traffic-stat { min-width: 0; color: var(--text-muted); font-size: 9px; }
+  .traffic-stat strong {
+    display: block; margin-top: 2px; overflow-wrap: anywhere;
+    color: var(--text-main); font: 500 11px 'JetBrains Mono', monospace;
+  }
+  #trafficUpdated { color: var(--text-muted); font-size: 9px; line-height: 1.4; }
+  #worldNewsPanel, #squareMapPanel, #productPanel { flex: 1; min-height: 0; }
+  #widgetDeckHeader { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+  .widget-tab {
+    border: 1px solid var(--glass-border); border-radius: 999px;
+    background: rgba(255,255,255,0.04); color: var(--text-muted);
+    font: inherit; font-size: 9px; font-weight: 600; padding: 6px 8px; cursor: pointer;
+  }
+  .widget-tab.active { color: var(--glow-cyan); border-color: rgba(0,242,254,0.35); }
+  #widgetDeckTimer { margin-left: auto; color: var(--text-muted); font: 10px 'JetBrains Mono', monospace; }
+  .dashboard-widget[hidden] { display: none !important; }
   #squareMapPanel {
-    position: absolute; bottom: 50px; right: 24px; z-index: 10;
-    width: 350px; height: 350px; border-radius: 4px;
-    border: 1px solid var(--panel-border); background: var(--panel-bg);
-    box-shadow: 0 0 25px rgba(0, 0, 0, 0.9); pointer-events: auto;
-    overflow: hidden; display: flex; flex-direction: column;
+    min-height: 190px; max-height: calc(min(55vh, 520px) - 48px);
+    overflow-y: auto; padding: 4px;
   }
-  #squareMapTitle { font-size: 11px; letter-spacing: 2px; font-weight: 700; color: var(--gold); padding: 6px 8px; background: rgba(2, 6, 9, 0.9); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; }
-  #mapContainer { width: 100%; flex: 1; }
+  #squareMapTitle {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  #locationStatus { display: flex; align-items: center; gap: 7px; }
+  #locationStatus::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--glow-amber); box-shadow: 0 0 10px var(--glow-amber);
+  }
+  #locationStatus.verified::before { background: var(--glow-cyan); box-shadow: 0 0 10px var(--glow-cyan); }
+  #locationPlace { margin-top: 16px; color: var(--text-main); font-size: 19px; font-weight: 600; }
+  #locationAccuracy { margin-top: 6px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+  #locationActions { display: flex; gap: 8px; margin-top: 16px; }
+  .location-action {
+    border: 1px solid var(--glass-border); border-radius: 7px;
+    background: rgba(255, 255, 255, 0.04); color: var(--text-main);
+    font: inherit; font-size: 11px; font-weight: 600; padding: 8px 10px; cursor: pointer;
+  }
+  .location-action.primary { border-color: rgba(0, 242, 254, 0.35); color: var(--glow-cyan); }
+  .location-action:hover { background: rgba(0, 242, 254, 0.1); }
+  #routeSummary { display: none; margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--glass-border); }
+  #routeSummary.visible { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+  #routeText { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+  #routeEta { color: var(--glow-cyan); font: 600 12px 'JetBrains Mono', monospace; white-space: nowrap; }
+  #googleRouteBtn { grid-column: 1 / -1; justify-self: start; }
+
+  #worldNewsPanel {
+    display: flex; flex-direction: column;
+    max-height: calc(min(55vh, 520px) - 48px); overflow: hidden;
+  }
+  #worldNewsHeading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #worldNewsHeading .side-panel-title { margin: 0; }
+  #worldNewsList { overflow-y: auto; margin-top: 8px; }
+  .news-item {
+    display: block; width: 100%; text-align: left; padding: 9px 0;
+    border: 0; border-top: 1px solid var(--glass-border); background: transparent;
+    color: var(--text-main); font: inherit; cursor: pointer;
+  }
+  .news-item strong { display: block; font-size: 12px; line-height: 1.45; }
+  .news-item span { display: block; margin-top: 4px; color: var(--text-muted); font-size: 10px; }
+  #newsDetail { display: none; max-height: 150px; overflow-y: auto; margin-top: 8px;
+    padding-top: 8px; border-top: 1px solid var(--glass-border);
+    color: var(--text-muted); font-size: 11px; line-height: 1.5; white-space: pre-wrap; }
+  #newsDetail.visible { display: block; }
+  #newsDetail a { color: var(--glow-cyan); }
+  #marketPanel { overflow-y: auto; }
+  #marketForm, #productForm { display: flex; gap: 6px; margin: 8px 0; }
+  .widget-input {
+    min-width: 0; flex: 1; border: 1px solid var(--glass-border); border-radius: 7px;
+    background: rgba(255,255,255,0.05); color: var(--text-main); padding: 8px;
+    font: 11px 'JetBrains Mono', monospace;
+  }
+  .market-note, #marketStatus, #productStatus {
+    color: var(--text-muted); font-size: 10px; line-height: 1.45;
+  }
+  .market-card { padding: 10px 0; border-top: 1px solid var(--glass-border); }
+  .market-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .market-card-head strong { font-size: 12px; }
+  .market-price { font: 600 13px 'JetBrains Mono', monospace; }
+  .market-meta { margin-top: 3px; color: var(--text-muted); font-size: 9px; line-height:1.4; }
+  .market-up { color: #5df2b2; }
+  .market-down { color: #ff738f; }
+  .market-flat { color: #ffd27a; }
+  .market-chart { display:block; width:100%; height:100px; margin-top:4px; }
+  .market-legend { color:var(--text-muted); font-size:9px; line-height:1.4; }
+  .market-actual { fill:none; stroke:#45d9ee; stroke-width:2; }
+  .market-expected { fill:none; stroke:#ff70c6; stroke-width:2; stroke-dasharray:5 4; }
+  #marketSource { margin-top: 4px; }
+  #productPanel p { color:var(--text-muted); font-size:11px; line-height:1.5; margin:8px 0; }
+
+  #videoPanel {
+    position: absolute; top: 82px; left: 50%; transform: translateX(-50%); z-index: 5;
+    width: clamp(260px, 28vw, 420px); height: clamp(160px, 18vw, 260px);
+    border-radius: 18px; border: 1px solid var(--glass-border);
+    background: var(--glass-bg); backdrop-filter: blur(24px);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); pointer-events: auto;
+    overflow: hidden; display: none; flex-direction: column;
+  }
+  #videoPanel.visible { display: flex; }
+  #videoPanelTitle {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-muted); padding: 10px 12px; border-bottom: 1px solid var(--glass-border);
+    display: flex; justify-content: space-between;
+  }
+  #videoPanelTitle span.close { cursor: pointer; color: var(--glow-magenta); pointer-events: auto; font-weight: 600; }
+  #videoFrame { width: 100%; flex: 1; border: none; }
+  @media (max-width: 650px) {
+    #dashboardDock {
+      left: 12px; right: 12px; bottom: 60px; height: auto;
+      max-height: calc(100vh - 270px); grid-template-columns: minmax(0, 1fr);
+      overflow-y: auto; padding-right: 2px;
+    }
+    #dashboardDock > * { min-height: 175px; }
+    #trafficMap { flex-basis: 120px; min-height: 120px; }
+    #worldNewsPanel, #squareMapPanel { min-height: 0; }
+    #locationPlace { font-size: 15px; }
+    #locationActions { flex-wrap: wrap; margin-top: 10px; }
+    .location-action { padding: 7px; }
+  }
+  @media (max-width: 1450px) {
+    .side-col {
+      top: 78px; bottom: auto; left: 12px; right: 12px; width: auto; height: 126px;
+      flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 8px;
+    }
+    .side-col.left { left: 12px; }
+    .side-col.right { top: 214px; right: 12px; }
+    .side-col .side-panel { flex: 0 0 250px !important; min-height: 0; }
+    #dashboardDock {
+      left: 12px; right: 12px; bottom: 78px; height: min(52vh, 440px);
+      max-height: calc(100vh - 425px); grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: minmax(0, 1fr); overflow: hidden;
+    }
+    #trafficMap { flex-basis: 130px; min-height: 110px; }
+  }
+  @media (max-width: 650px) {
+    .side-col { top: 70px; height: 88px; }
+    .side-col.right { top: 166px; }
+    .side-col .side-panel { flex-basis: 225px !important; padding: 10px; }
+    #dashboardDock {
+      top: auto; bottom: 78px; height: auto; max-height: calc(100vh - 340px);
+      grid-template-columns: minmax(0, 1fr); grid-template-rows: none;
+      grid-auto-rows: minmax(155px, auto);
+    }
+    #trafficPanel, #marketPanel, #dashboardWidgetDeck {
+      grid-column: 1; grid-row: auto;
+    }
+  }
+  @media (max-height: 560px) and (max-width: 1450px) {
+    .side-col { top: 62px; height: 70px; }
+    .side-col.right { top: 140px; }
+    #dashboardDock { bottom: 78px; max-height: calc(100vh - 296px); }
+    #dashboardDock > * { padding: 8px; }
+  }
+  @media (max-height: 560px) and (max-width: 650px) {
+    #dashboardDock { bottom: 78px; max-height: calc(100vh - 340px); }
+  }
+  @media (max-width: 650px), (max-height: 650px) {
+    html, body {
+      width: 100%; height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto;
+    }
+    .ui-layer {
+      position: relative; inset: auto; width: 100%; height: auto; min-height: 205px;
+      padding: 18px 16px 12px;
+    }
+    .stage-center { min-height: 64px; transform: none; }
+    .side-col, .side-col.left, .side-col.right {
+      position: relative; top: auto; right: auto; bottom: auto; left: auto;
+      width: auto; height: 126px; margin: 8px 12px;
+      flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    }
+    #dashboardDock {
+      position: relative; top: auto; right: auto; bottom: auto; left: auto;
+      width: auto; height: auto; max-height: none; margin: 12px;
+      grid-template-columns: minmax(0, 1fr); grid-template-rows: none;
+      grid-auto-rows: 310px; overflow: visible;
+    }
+    #dashboardDock > * { height: 310px; min-height: 0; }
+    #trafficPanel, #marketPanel, #dashboardWidgetDeck { grid-column: 1; grid-row: auto; }
+    #videoPanel {
+      position: relative; top: auto; left: auto; transform: none; width: auto;
+      height: 220px; margin: 12px;
+    }
+  }
 </style>
 </head>
 <body>
 
-<canvas id="glCanvas"></canvas>
+<div class="vignette"></div>
+<canvas id="coreCanvas"></canvas>
 
-<div id="dashboard">
-  <!-- Header -->
-  <div class="header">
-    <div>
-      <span class="brand">MAGGIE</span>
-      <span style="font-size: 12px; letter-spacing: 2px; color: var(--dim); margin-left: 10px;">SYSTEM INTELLIGENCE DASHBOARD</span>
+<div class="ui-layer">
+  <header>
+    <div class="brand-group">
+      <div class="neural-node" id="neuralNode"></div>
+      <div class="brand-title">Maggie</div>
     </div>
-    <div class="badge" id="stateBadge">IDLE</div>
-  </div>
-
-  <!-- Left Column -->
-  <div class="col-left">
-    <!-- CPU & RAM -->
-    <div class="panel">
-      <div class="panel-title">  HARDWARE TELEMETRY</div>
-      <div class="data-row"><span>CPU Overall</span><span class="data-val" id="cpuPct">0%</span></div>
-      <div class="data-row"><span>Load Average</span><span class="data-val" id="loadAvg">0.0, 0.0, 0.0</span></div>
-      <div class="data-row"><span>RAM Allocation</span><span class="data-val" id="ramInfo">0 GB / 0 GB</span></div>
-      <div class="data-row"><span>Swap Usage</span><span class="data-val" id="swapInfo">0 GB / 0 GB</span></div>
-      <div class="data-row"><span>Disk Space</span><span class="data-val" id="diskInfo">0 GB / 0 GB</span></div>
-      <div class="data-row"><span>CPU Temp</span><span class="data-val" id="cpuTemp">0&deg;C</span></div>
-      <div class="data-row"><span>Battery Status</span><span class="data-val" id="batInfo">100%</span></div>
+    <div class="state-capsule">
+      <span class="state-pip" id="statePip"></span>
+      <span id="stateLabel">Idle</span>
     </div>
+  </header>
 
-    <!-- Running Processes -->
-    <div class="panel">
-      <div class="panel-title">  TOP RUNNING PROCESSES</div>
-      <table class="proc-table">
-        <thead>
-          <tr><th>NAME</th><th>CPU</th><th>RAM</th></tr>
-        </thead>
-        <tbody id="procRows">
-          <tr><td>python3</td><td>0%</td><td>0MB</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Network Intelligence -->
-    <div class="panel">
-      <div class="panel-title">  NETWORK & PING LATENCY</div>
-      <div class="data-row"><span>Gateway (192.168.1.1)</span><span class="data-val" id="pingGw">--</span></div>
-      <div class="data-row"><span>DNS Server (8.8.8.8)</span><span class="data-val" id="pingDns">--</span></div>
-      <div class="data-row"><span>Interface</span><span class="data-val">enp3s0 (Active)</span></div>
+  <div class="stage-center">
+    <div class="transcription-box" id="captionText"></div>
+    <div class="core-metrics">
+      <span>Lat: <span id="synapseLatency" style="color: #fff;">--</span></span>
+      <span>Entropy: <span id="synapseEntropy" style="color: #fff;">0.000</span></span>
+      <span>Harmonics: <span id="synapseHarmonics" style="color: #fff;">Stable</span></span>
     </div>
   </div>
 
-  <!-- Center Column -->
-  <div class="col-center">
-    <div></div>
-    <div id="transcript"></div>
-    <div></div>
+  <footer>
+    <div class="status-line">Mic active, voice engine online &middot; <span id="clockText">--:--:--</span></div>
+    <div id="ownerVoiceStatus" class="status-line">Voice: not enrolled</div>
+  </footer>
+</div>
+
+<section id="dashboardDock" aria-label="Live traffic, market data and dashboard widgets">
+<section id="trafficPanel" aria-label="Live Marathahalli Bengaluru traffic">
+  <div id="trafficHeading">
+    <div class="side-panel-title">MARATHAHALLI · BENGALURU</div>
+    <button class="location-action" id="refreshTrafficBtn" type="button">Refresh</button>
+  </div>
+  <div id="trafficStatus" aria-live="polite">Checking live traffic…</div>
+  <div id="trafficMap" aria-label="Map centered on Marathahalli junction"></div>
+  <div id="trafficStats">
+    <div class="traffic-stat">Current speed<strong id="trafficCurrentSpeed">--</strong></div>
+    <div class="traffic-stat">Free-flow speed<strong id="trafficFreeFlowSpeed">--</strong></div>
+    <div class="traffic-stat">Road travel time<strong id="trafficCurrentTime">--</strong></div>
+    <div class="traffic-stat">Traffic delay<strong id="trafficDelay">--</strong></div>
+  </div>
+  <div id="trafficUpdated">Waiting for the traffic feed.</div>
+</section>
+
+<section id="marketPanel" aria-label="NSE and BSE market watch">
+  <div class="side-panel-title">INDIA MARKET WATCH</div>
+  <div class="market-note">NSE/BSE · checks every 10s · source candles are 1 minute</div>
+  <form id="marketForm">
+    <input id="marketSymbolsInput" class="widget-input" type="text"
+      placeholder="^NSEI, ^BSESN or RELIANCE.NS (max 4)" aria-label="NSE/BSE symbols">
+    <button class="location-action primary" type="submit">Save</button>
+  </form>
+  <div id="marketStatus" aria-live="polite">Loading Indian market indices…</div>
+  <div class="market-legend">Solid line: actual source prices · Dashed line: five-minute trend estimate</div>
+  <div id="marketResults"></div>
+  <div id="marketSource" class="market-meta">Source: Yahoo Finance chart feed. Quotes can be delayed; the trend estimate is not a forecast or investment advice.</div>
+</section>
+
+<section id="dashboardWidgetDeck" aria-label="Dashboard widgets">
+  <nav id="widgetDeckHeader" aria-label="Dashboard widget selector">
+    <button class="widget-tab active" type="button" data-widget="news">News</button>
+    <button class="widget-tab" type="button" data-widget="location">Location</button>
+    <button class="widget-tab" type="button" data-widget="product">Product</button>
+    <span id="widgetDeckTimer">Switching in 10s</span>
+  </nav>
+  <section id="worldNewsPanel" class="dashboard-widget" aria-label="Latest world news">
+  <div id="worldNewsHeading">
+    <div class="side-panel-title">World news · BBC</div>
+    <button class="location-action" id="refreshNewsBtn" type="button">Refresh</button>
+  </div>
+  <div id="worldNewsList" aria-live="polite">Loading latest headlines…</div>
+  <div id="newsDetail" aria-live="polite"></div>
+</section>
+
+<div id="squareMapPanel" class="dashboard-widget" hidden>
+  <div id="squareMapTitle">
+    <span>YOUR LOCATION</span>
+    <span id="locationStatus">Not verified</span>
+  </div>
+  <div id="locationPlace">Location not verified</div>
+  <div id="locationAccuracy">Maggie won’t guess your location from your IP address.</div>
+  <div id="locationActions">
+    <button class="location-action primary" id="deviceLocationBtn" type="button">Find my location</button>
+    <button class="location-action" id="googleMapsBtn" type="button">Open Google Maps</button>
+  </div>
+  <div id="routeSummary">
+    <span id="routeText"></span>
+    <span id="routeEta"></span>
+    <button class="location-action" id="googleRouteBtn" type="button">Directions</button>
+  </div>
+</section>
+<section id="productPanel" class="dashboard-widget" aria-label="Buyhatke product price history" hidden>
+  <div class="side-panel-title">PRODUCT PRICE HISTORY · BUYHATKE</div>
+  <p>Paste an HTTPS product link from a retailer. Maggie will open its Buyhatke price-history page; Buyhatke does not provide a public product-data feed for an in-dashboard forecast.</p>
+  <form id="productForm">
+    <input id="productUrlInput" class="widget-input" type="url" required
+      placeholder="https://www.amazon.in/dp/…" aria-label="Retailer product URL">
+    <button class="location-action primary" type="submit">Open</button>
+  </form>
+  <div id="productStatus" aria-live="polite">Product price history is provided by Buyhatke in the browser.</div>
+</section>
+</section>
+</section>
+
+<div class="side-col left">
+  <div class="side-panel">
+    <div class="side-panel-title">Hardware telemetry</div>
+    <div class="side-row"><span>CPU overall</span><span class="side-val" id="cpuPct">0%</span></div>
+    <div class="side-row"><span>Load average</span><span class="side-val" id="loadAvg">0.0, 0.0, 0.0</span></div>
+    <div class="side-row"><span>RAM</span><span class="side-val" id="ramInfo">0 / 0 GB</span></div>
+    <div class="side-row"><span>Swap</span><span class="side-val" id="swapInfo">0 / 0 GB</span></div>
+    <div class="side-row"><span>Disk</span><span class="side-val" id="diskInfo">0 / 0 GB</span></div>
+    <div class="side-row"><span>CPU temp</span><span class="side-val" id="cpuTemp">0&deg;C</span></div>
+    <div class="side-row"><span>Battery</span><span class="side-val" id="batInfo">100%</span></div>
   </div>
 
-  <!-- Right Column -->
-  <div class="col-right">
-    <!-- Services -->
-    <div class="panel">
-      <div class="panel-title">  SYSTEM SERVICES</div>
-      <div id="servicesList">
-        <div class="data-row"><span>Maggie AI</span><span class="status-tag running">&bullet; Running</span></div>
-      </div>
-    </div>
-
-    <!-- Maggie Health -->
-    <div class="panel">
-      <div class="panel-title">  MAGGIE HEALTH</div>
-      <div id="healthList">
-        <div class="data-row"><span>AI Engine</span><span class="status-tag running">&bullet; READY</span></div>
-        <div class="data-row"><span>STT / Voice Input</span><span class="status-tag running">&bullet; READY</span></div>
-        <div class="data-row"><span>TTS / Speaker Output</span><span class="status-tag running">&bullet; READY</span></div>
-        <div class="data-row"><span>Memory Database</span><span class="status-tag running">&bullet; READY</span></div>
-      </div>
-    </div>
-
-    <!-- AI Performance -->
-    <div class="panel">
-      <div class="panel-title">  AI PERFORMANCE & ENGINE</div>
-      <div class="data-row"><span>Model</span><span class="data-val" id="aiModel">llama-3.3-70b</span></div>
-      <div class="data-row"><span>Backend</span><span class="data-val" id="aiBackend">Groq / Local</span></div>
-      <div class="data-row"><span>Response Latency</span><span class="data-val" id="aiLatency">0.82 s</span></div>
-    </div>
+  <div class="side-panel">
+    <div class="side-panel-title">Top processes</div>
+    <table class="proc-table">
+      <thead><tr><th>Name</th><th>CPU</th><th>RAM</th></tr></thead>
+      <tbody id="procRows"><tr><td>python3</td><td>0%</td><td>0MB</td></tr></tbody>
+    </table>
   </div>
 
-  <!-- Bottom Controls Bar -->
-  <div class="bottom-bar">
-    <span>MIC ACTIVE &middot; VOICE CONTROLS READY</span>
-    <span id="clockText">--:--:--</span>
+  <div class="side-panel" style="flex: 1; min-height: 140px; display: flex; flex-direction: column;">
+    <div class="side-panel-title">Live terminal</div>
+    <div id="terminalLog" style="flex: 1; overflow-y: auto;"></div>
   </div>
 </div>
 
-<!-- Bottom-Right Square Map Floating Widget (350x350) -->
-<div id="squareMapPanel">
-  <div id="squareMapTitle"><span>LIVE TRAFFIC MONITOR</span><span id="trafficEta">--</span></div>
-  <div id="mapContainer"></div>
+<div class="side-col right">
+  <div class="side-panel">
+    <div class="side-panel-title">System services</div>
+    <div id="servicesList">
+      <div class="side-row"><span>Maggie AI</span><span class="side-status running">&bull; Running</span></div>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="side-panel-title">Maggie health</div>
+    <div id="healthList">
+      <div class="side-row"><span>AI engine</span><span class="side-status running">&bull; Ready</span></div>
+      <div class="side-row"><span>STT / voice input</span><span class="side-status running">&bull; Ready</span></div>
+      <div class="side-row"><span>TTS / speaker</span><span class="side-status running">&bull; Ready</span></div>
+      <div class="side-row"><span>Memory DB</span><span class="side-status running">&bull; Ready</span></div>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="side-panel-title">AI performance</div>
+    <div class="side-row"><span>Model</span><span class="side-val" id="aiModel">--</span></div>
+    <div class="side-row"><span>Backend</span><span class="side-val" id="aiBackend">--</span></div>
+    <div class="side-row"><span>Latency</span><span class="side-val" id="aiLatency">--</span></div>
+  </div>
+
+  <div class="side-row" style="font-size: 11px; padding-top: 4px;">
+    <span>Network</span><span class="side-val" id="pingGw">--</span>
+  </div>
 </div>
 
+<div id="videoPanel">
+  <div id="videoPanelTitle"><span>Now playing</span><span class="close" id="videoCloseBtn">Close</span></div>
+  <iframe id="videoFrame" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-// Canvas Renderer
-const canvas = document.getElementById('glCanvas');
-const ctx = canvas.getContext('2d');
-let cx, cy;
-function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; cx = canvas.width / 2; cy = canvas.height / 2 - 10; }
-window.addEventListener('resize', resize); resize();
+const canvas = document.getElementById('coreCanvas');
+const gl = canvas.getContext('webgl2', { alpha: true, antialias: true, powerPreference: 'high-performance' });
 
-let angle1 = 0, angle2 = 0, scale = 1, targetScale = 1, currentState = "idle";
-
-function render() {
-  ctx.fillStyle = 'rgba(2, 6, 9, 0.25)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  angle1 += 0.008; angle2 -= 0.012; scale += (targetScale - scale) * 0.08;
-  ctx.save(); ctx.translate(cx, cy);
-
-  ctx.strokeStyle = '#1b4e5f'; ctx.lineWidth = 5 * scale; ctx.shadowBlur = 15; ctx.shadowColor = '#52fefe';
-  ctx.beginPath(); ctx.arc(0, 0, 120 * scale, 0, Math.PI * 2); ctx.stroke();
-
-  ctx.save(); ctx.rotate(angle1);
-  for (let i = 0; i < 10; i++) {
-    ctx.rotate((Math.PI * 2) / 10); ctx.fillStyle = '#073c4b'; ctx.strokeStyle = '#52fefe'; ctx.lineWidth = 1;
-    ctx.fillRect(100 * scale, -8, 20 * scale, 16); ctx.strokeRect(100 * scale, -8, 20 * scale, 16);
-  }
-  ctx.restore();
-
-  ctx.fillStyle = currentState === "speaking" ? '#f0a860' : '#ffffff'; ctx.shadowBlur = 30;
-  ctx.shadowColor = currentState === "speaking" ? '#f0a860' : '#52fefe';
-  ctx.beginPath(); ctx.arc(0, 0, 32 * scale, 0, Math.PI * 2); ctx.fill();
-  ctx.restore(); requestAnimationFrame(render);
+if (!gl) {
+  alert('WebGL 2 is required for organic shader rendering.');
 }
-render();
 
-// Leaflet Map Initialization with High-Contrast Transport Style for Traffic Visibility
-const map = L.map('mapContainer', { zoomControl: false }).setView([12.9716, 77.5946], 12);
-L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
-let routeLayer = null;
+const vsSource = `#version 300 es
+in vec2 position;
+void main() {
+  gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
 
-// Live Telemetry Sync
-let lastAnswer = null, fadeTimeout = null;
+const fsSource = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform float u_audio_amplitude;
+uniform vec3 u_color_core;
+uniform vec3 u_color_rim;
+uniform vec3 u_color_sub;
+uniform float u_chaos;
+uniform float u_turbulence;
 
-async function syncState() {
-  if (window.pywebview && window.pywebview.api) {
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+float snoise(vec3 v){
+  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i  = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+  vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+  vec3 x3 = x0 - 1.0 + 3.0 * C.xxx;
+  i = mod(i, 289.0);
+  vec4 p = permute(permute(permute(
+             i.z + vec4(0.0, i1.z, i2.z, 1.0))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+}
+
+float map(vec3 p) {
+  float baseRadius = 1.06;
+  vec3 q = p + vec3(0.0, -u_time * 0.22, u_time * 0.16);
+  float displacement = snoise(q * (1.6 + u_turbulence * 0.8)) * (0.24 + u_audio_amplitude * 0.38);
+  displacement += snoise(p * 3.4 + vec3(u_time * 0.8)) * (0.08 + u_chaos * 0.14);
+  return length(p) - (baseRadius + displacement);
+}
+
+vec3 calcNormal(vec3 p) {
+  const float h = 0.002;
+  const vec2 k = vec2(1, -1);
+  return normalize(
+    k.xyy * map(p + k.xyy * h) +
+    k.yyx * map(p + k.yyx * h) +
+    k.yxy * map(p + k.yxy * h) +
+    k.xxx * map(p + k.xxx * h)
+  );
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+  vec3 ro = vec3(0.0, 0.0, 3.2);
+  vec3 rd = normalize(vec3(uv, -1.8));
+  
+  float t = 0.0;
+  float hit = 0.0;
+  vec3 p;
+  
+  for (int i = 0; i < 70; i++) {
+    p = ro + rd * t;
+    float d = map(p);
+    if (d < 0.001) {
+      hit = 1.0;
+      break;
+    }
+    if (t > 5.0) break;
+    t += d * 0.65;
+  }
+  
+  vec3 col = vec3(0.0);
+  
+  if (hit > 0.5) {
+    vec3 n = calcNormal(p);
+    vec3 viewDir = -rd;
+    float fresnel = pow(clamp(1.0 - dot(viewDir, n), 0.0, 1.0), 3.0);
+    float coreFactor = clamp(dot(viewDir, n), 0.0, 1.0);
+    float light2 = clamp(dot(n, normalize(vec3(-1.0, -1.0, -0.5))), 0.0, 1.0);
+    
+    col = mix(u_color_core, u_color_sub, (1.0 - coreFactor) * 0.85);
+    col += u_color_rim * fresnel * 3.0;
+    col += u_color_sub * light2 * 0.5;
+    col += vec3(1.0) * pow(fresnel, 5.0) * 1.6;
+    
+    float depthGlow = exp(-t * 0.4);
+    col *= depthGlow;
+  } else {
+    float dist = length(uv);
+    float aura = exp(-dist * 2.5) * (0.48 + u_audio_amplitude * 0.55);
+    col = mix(u_color_rim, u_color_core, dist * 0.8) * aura;
+  }
+  
+  col += u_color_rim * 0.09 * (1.0 / (length(uv) * 2.4 + 0.1));
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(shader));
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+const program = gl.createProgram();
+gl.attachShader(program, vs);
+gl.attachShader(program, fs);
+gl.linkProgram(program);
+
+const posBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1, -1,  1, -1, -1,  1,
+  -1,  1,  1, -1,  1,  1,
+]), gl.STATIC_DRAW);
+
+const posAttrib = gl.getAttribLocation(program, 'position');
+gl.enableVertexAttribArray(posAttrib);
+gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+
+const uResolution = gl.getUniformLocation(program, 'u_resolution');
+const uTime = gl.getUniformLocation(program, 'u_time');
+const uAudioAmp = gl.getUniformLocation(program, 'u_audio_amplitude');
+const uColorCore = gl.getUniformLocation(program, 'u_color_core');
+const uColorRim = gl.getUniformLocation(program, 'u_color_rim');
+const uColorSub = gl.getUniformLocation(program, 'u_color_sub');
+const uChaos = gl.getUniformLocation(program, 'u_chaos');
+const uTurbulence = gl.getUniformLocation(program, 'u_turbulence');
+
+// 4 distinct color schemes & kinetic dynamics:
+// 1. IDLE     -> Deep Velvet Blue + Electric Neon Cyan
+// 2. LISTEN   -> Deep Marine Emerald + Emerald Glow
+// 3. THINK    -> Ultra Violet + Hot Plasma Magenta
+// 4. SPEAK    -> Molten Coral + Solar Fire Amber
+const STATE_THEMES = {
+  idle: {
+    core: [0.06, 0.01, 0.28],
+    rim: [0.0, 0.95, 1.0],
+    sub: [0.35, 0.05, 0.95],
+    chaos: 0.15,
+    turbulence: 0.2,
+    pipColor: '#00f2fe'
+  },
+  listening: {
+    core: [0.01, 0.20, 0.12],
+    rim: [0.0, 1.0, 0.55],
+    sub: [0.05, 0.55, 0.85],
+    chaos: 0.45,
+    turbulence: 0.7,
+    pipColor: '#00ffa3'
+  },
+  thinking: {
+    core: [0.28, 0.02, 0.35],
+    rim: [1.0, 0.04, 0.52],
+    sub: [0.55, 0.0, 1.0],
+    chaos: 0.98,
+    turbulence: 1.45,
+    pipColor: '#fe0979'
+  },
+  speaking: {
+    core: [0.38, 0.08, 0.01],
+    rim: [1.0, 0.65, 0.0],
+    sub: [1.0, 0.18, 0.32],
+    chaos: 0.62,
+    turbulence: 0.95,
+    pipColor: '#ff9900'
+  }
+};
+
+let currentTheme = {
+  core: [...STATE_THEMES.idle.core],
+  rim: [...STATE_THEMES.idle.rim],
+  sub: [...STATE_THEMES.idle.sub],
+  chaos: STATE_THEMES.idle.chaos,
+  turbulence: STATE_THEMES.idle.turbulence
+};
+
+let targetTheme = {
+  core: [...STATE_THEMES.idle.core],
+  rim: [...STATE_THEMES.idle.rim],
+  sub: [...STATE_THEMES.idle.sub],
+  chaos: STATE_THEMES.idle.chaos,
+  turbulence: STATE_THEMES.idle.turbulence
+};
+
+let currentAmp = 0.0, targetAmp = 0.0;
+let currentState = 'idle';
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpVec3(a, b, t) {
+  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+}
+
+let startTime = performance.now();
+let lastFrameTime = 0;
+
+function animate(frameTime) {
+  if (frameTime - lastFrameTime < 33) {
+    requestAnimationFrame(animate);
+    return;
+  }
+  lastFrameTime = frameTime;
+  const time = (performance.now() - startTime) * 0.001;
+  const blendSpeed = 0.065; // High responsiveness color shifting
+
+  currentTheme.core = lerpVec3(currentTheme.core, targetTheme.core, blendSpeed);
+  currentTheme.rim = lerpVec3(currentTheme.rim, targetTheme.rim, blendSpeed);
+  currentTheme.sub = lerpVec3(currentTheme.sub, targetTheme.sub, blendSpeed);
+  currentTheme.chaos = lerp(currentTheme.chaos, targetTheme.chaos, blendSpeed);
+  currentTheme.turbulence = lerp(currentTheme.turbulence, targetTheme.turbulence, blendSpeed);
+
+  if (currentState === 'speaking') {
+    targetAmp = 0.38 + Math.sin(time * 12.0) * 0.16 + Math.cos(time * 24.0) * 0.12;
+  } else if (currentState === 'listening') {
+    targetAmp = 0.15 + Math.sin(time * 5.0) * 0.08;
+  } else if (currentState === 'thinking') {
+    targetAmp = 0.08 + Math.sin(time * 18.0) * 0.04;
+  } else {
+    targetAmp = 0.03;
+  }
+  currentAmp = lerp(currentAmp, targetAmp, 0.12);
+
+  gl.useProgram(program);
+  gl.uniform2f(uResolution, canvas.width, canvas.height);
+  gl.uniform1f(uTime, time);
+  gl.uniform1f(uAudioAmp, currentAmp);
+  gl.uniform3fv(uColorCore, currentTheme.core);
+  gl.uniform3fv(uColorRim, currentTheme.rim);
+  gl.uniform3fv(uColorSub, currentTheme.sub);
+  gl.uniform1f(uChaos, currentTheme.chaos);
+  gl.uniform1f(uTurbulence, currentTheme.turbulence);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) requestAnimationFrame(animate);
+});
+
+// Automatically triggers whenever Maggie shifts state
+function setOrbState(state) {
+  if (!state) return;
+  const raw = String(state).toLowerCase().trim();
+  
+  let key = 'idle';
+  if (raw.includes('listen')) key = 'listening';
+  else if (raw.includes('think') || raw.includes('process')) key = 'thinking';
+  else if (raw.includes('speak') || raw.includes('talk')) key = 'speaking';
+  else key = 'idle';
+
+  if (!STATE_THEMES[key]) return;
+
+  currentState = key;
+  const preset = STATE_THEMES[key];
+
+  // Deep clone to prevent pointer reference locking
+  targetTheme.core = [...preset.core];
+  targetTheme.rim = [...preset.rim];
+  targetTheme.sub = [...preset.sub];
+  targetTheme.chaos = preset.chaos;
+  targetTheme.turbulence = preset.turbulence;
+
+  const pip = document.getElementById('statePip');
+  const label = document.getElementById('stateLabel');
+  const node = document.getElementById('neuralNode');
+
+  if (pip) {
+    pip.style.background = preset.pipColor;
+    pip.style.boxShadow = `0 0 12px ${preset.pipColor}`;
+  }
+  if (node) {
+    node.style.background = preset.pipColor;
+    node.style.boxShadow = `0 0 16px ${preset.pipColor}`;
+  }
+  if (label) {
+    label.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+  }
+}
+
+const marathahalliCoordinates = [12.9591, 77.7010];
+let trafficMap = null;
+let trafficMapMarker = null;
+let trafficRoadLine = null;
+if (window.L) {
+  trafficMap = L.map('trafficMap', { scrollWheelZoom: false }).setView(
+    marathahalliCoordinates, 14
+  );
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(trafficMap);
+  trafficMapMarker = L.circleMarker(marathahalliCoordinates, {
+    radius: 9, color: '#ffd27a', fillColor: '#ffd27a', fillOpacity: 0.8,
+  }).addTo(trafficMap).bindTooltip('Marathahalli junction');
+} else {
+  document.getElementById('trafficMap').textContent =
+    'Map tiles are unavailable. Check the network connection.';
+}
+
+let trafficRequestActive = false;
+async function refreshMarathahalliTraffic() {
+  if (!window.pywebview?.api || trafficRequestActive) return;
+  trafficRequestActive = true;
+  const statusElement = document.getElementById('trafficStatus');
+  statusElement.textContent = 'Updating live traffic…';
+  try {
+    const data = await window.pywebview.api.get_marathahalli_traffic();
+    statusElement.classList.remove('light', 'moderate', 'heavy');
+    if (!data.traffic_live) {
+      statusElement.textContent = data.error || 'Live traffic is unavailable.';
+      document.getElementById('trafficCurrentSpeed').textContent = '--';
+      document.getElementById('trafficFreeFlowSpeed').textContent = '--';
+      document.getElementById('trafficCurrentTime').textContent = '--';
+      document.getElementById('trafficDelay').textContent = '--';
+      document.getElementById('trafficUpdated').textContent =
+        'The map remains centered on Marathahalli; live flow values need a working feed.';
+      if (trafficMapMarker) {
+        trafficMapMarker.setStyle({ color: '#ffd27a', fillColor: '#ffd27a' });
+        trafficMapMarker.setTooltipContent('Marathahalli · live traffic unavailable');
+      }
+      if (trafficMap && trafficRoadLine) {
+        trafficMap.removeLayer(trafficRoadLine);
+        trafficRoadLine = null;
+      }
+      return;
+    }
+
+    const level = String(data.traffic_level || '').toLowerCase();
+    const color = level === 'heavy' ? '#ff738f' : level === 'moderate' ? '#ffd27a' : '#5df2b2';
+    statusElement.textContent =
+      `${data.traffic_level} traffic${data.road_closed ? ' · road closure reported' : ''}`;
+    statusElement.classList.add(['light', 'moderate', 'heavy'].includes(level) ? level : 'moderate');
+    document.getElementById('trafficCurrentSpeed').textContent =
+      `${data.current_speed_kmh.toFixed(1)} km/h`;
+    document.getElementById('trafficFreeFlowSpeed').textContent =
+      `${data.free_flow_speed_kmh.toFixed(1)} km/h`;
+    document.getElementById('trafficCurrentTime').textContent =
+      `${data.current_travel_time_mins.toFixed(1)} min`;
+    document.getElementById('trafficDelay').textContent =
+      `+${data.traffic_delay_mins.toFixed(1)} min`;
+    const updateTime = data.updated_at ? new Date(data.updated_at).toLocaleTimeString() : 'unknown';
+    const confidence = Number.isFinite(data.confidence)
+      ? ` · confidence ${(data.confidence * 100).toFixed(0)}%`
+      : '';
+    document.getElementById('trafficUpdated').textContent =
+      `Updated ${updateTime} · ${data.source || 'TomTom'}${confidence}`;
+    if (trafficMapMarker) {
+      trafficMapMarker.setStyle({ color, fillColor: color });
+      trafficMapMarker.setTooltipContent(
+        `${data.traffic_level} traffic · ${data.current_speed_kmh.toFixed(1)} km/h`
+      );
+    }
+    const roadCoordinates = (data.road_coordinates || [])
+      .map(point => [Number(point[0]), Number(point[1])])
+      .filter(point => point.every(Number.isFinite));
+    if (trafficMap && roadCoordinates.length >= 2) {
+      if (trafficRoadLine) trafficMap.removeLayer(trafficRoadLine);
+      trafficRoadLine = L.polyline(roadCoordinates, {
+        color, weight: 6, opacity: 0.85,
+      }).addTo(trafficMap);
+    }
+  } catch (error) {
+    statusElement.textContent = 'Live traffic request failed. Refresh to try again.';
+    document.getElementById('trafficUpdated').textContent = 'Could not reach the traffic feed.';
+    console.warn('Marathahalli traffic request failed:', error);
+  } finally {
+    trafficRequestActive = false;
+  }
+}
+document.getElementById('refreshTrafficBtn').addEventListener(
+  'click', refreshMarathahalliTraffic
+);
+setInterval(refreshMarathahalliTraffic, 60000);
+
+let lastTrafficKey = null;
+let locationRequested = false;
+let lastBridgeError = null;
+let newsStories = [];
+let newsLoaded = false;
+let marketSymbols = [];
+let marketInitialized = false;
+let trafficInitialized = false;
+let activeWidget = 'news';
+let widgetSecondsRemaining = 10;
+let widgetPointerInside = false;
+const widgetOrder = ['news', 'location', 'product'];
+
+function setActiveWidget(widgetName) {
+  activeWidget = widgetOrder.includes(widgetName) ? widgetName : 'news';
+  const panels = {
+    news: 'worldNewsPanel',
+    location: 'squareMapPanel',
+    product: 'productPanel',
+  };
+  widgetOrder.forEach(name => {
+    document.getElementById(panels[name]).hidden = name !== activeWidget;
+  });
+  document.querySelectorAll('.widget-tab').forEach(button => {
+    const selected = button.dataset.widget === activeWidget;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  widgetSecondsRemaining = 10;
+}
+
+document.querySelectorAll('.widget-tab').forEach(button => {
+  button.addEventListener('click', () => setActiveWidget(button.dataset.widget));
+});
+const widgetDeck = document.getElementById('dashboardWidgetDeck');
+widgetDeck.addEventListener('mouseenter', () => { widgetPointerInside = true; });
+widgetDeck.addEventListener('mouseleave', () => { widgetPointerInside = false; });
+setInterval(() => {
+  if (!widgetPointerInside) {
+    widgetSecondsRemaining -= 1;
+    if (widgetSecondsRemaining <= 0) {
+      const next = (widgetOrder.indexOf(activeWidget) + 1) % widgetOrder.length;
+      setActiveWidget(widgetOrder[next]);
+    }
+  }
+  document.getElementById('widgetDeckTimer').textContent =
+    widgetPointerInside ? 'Hover to pause' : `Switching in ${widgetSecondsRemaining}s`;
+}, 1000);
+
+function displayNewsStories(result) {
+  const list = document.getElementById('worldNewsList');
+  list.replaceChildren();
+  if (result.error) {
+    list.textContent = result.error;
+    return;
+  }
+  newsStories = result.stories || [];
+  if (!newsStories.length) {
+    list.textContent = 'No recent world headlines were returned.';
+    return;
+  }
+  newsStories.forEach((story, index) => {
+    const button = document.createElement('button');
+    button.className = 'news-item';
+    button.type = 'button';
+    const title = document.createElement('strong');
+    title.textContent = story.title;
+    const meta = document.createElement('span');
+    const published = story.published ? new Date(story.published).toLocaleString() : 'Time unavailable';
+    meta.textContent = `${story.source} · ${published} · Explain`;
+    button.append(title, meta);
+    button.addEventListener('click', () => explainNewsStory(index, button));
+    list.append(button);
+  });
+}
+
+async function loadWorldNews(refresh = false) {
+  const list = document.getElementById('worldNewsList');
+  if (refresh) list.textContent = 'Refreshing headlines…';
+  try {
+    const result = await window.pywebview.api.get_world_news(refresh);
+    displayNewsStories(result);
+  } catch (error) {
+    list.textContent = 'World news is temporarily unavailable.';
+    console.warn('World news request failed:', error);
+  }
+}
+
+async function explainNewsStory(index, button) {
+  const detail = document.getElementById('newsDetail');
+  detail.classList.add('visible');
+  detail.textContent = 'Preparing a source-based explanation…';
+  button.disabled = true;
+  try {
+    const result = await window.pywebview.api.explain_world_news(index);
+    detail.replaceChildren();
+    if (result.error) {
+      detail.textContent = result.error;
+      return;
+    }
+    const title = document.createElement('strong');
+    title.textContent = result.title;
+    const explanation = document.createElement('p');
+    explanation.textContent = result.explanation;
+    const source = document.createElement('a');
+    source.href = result.url;
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
+    source.textContent = 'Open BBC source';
+    detail.append(title, explanation, source);
+  } catch (error) {
+    detail.textContent = 'Could not explain this story right now. Please try again.';
+    console.warn('News explanation failed:', error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.getElementById('refreshNewsBtn').addEventListener('click', () => loadWorldNews(true));
+
+function formatMarketPrice(value, currency) {
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2,
+    }).format(value);
+  } catch (_) {
+    return `${Number(value).toFixed(2)} ${currency || ''}`;
+  }
+}
+
+function drawMarketChart(svg, item) {
+  const namespace = 'http://www.w3.org/2000/svg';
+  svg.replaceChildren();
+  const history = item.history || [];
+  if (!history.length) return;
+
+  const width = 360, height = 90, left = 6, actualRight = 302, projectedRight = 354;
+  const values = history.map(point => point.price).concat(item.projection_price_5m);
+  const minPrice = Math.min(...values);
+  const maxPrice = Math.max(...values);
+  const padding = Math.max((maxPrice - minPrice) * 0.12, Math.abs(maxPrice) * 0.0005);
+  const min = minPrice - padding, max = maxPrice + padding;
+  const y = price => height - 5 - ((price - min) / (max - min)) * (height - 10);
+  const actual = history.map((point, index) => {
+    const x = left + (history.length < 2 ? 0 : index / (history.length - 1)) * (actualRight - left);
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y(point.price).toFixed(1)}`;
+  }).join(' ');
+  const actualPath = document.createElementNS(namespace, 'path');
+  actualPath.setAttribute('class', 'market-actual');
+  actualPath.setAttribute('d', actual);
+  svg.append(actualPath);
+
+  const expectedPath = document.createElementNS(namespace, 'path');
+  expectedPath.setAttribute('class', 'market-expected');
+  expectedPath.setAttribute(
+    'd',
+    `M${actualRight},${y(history[history.length - 1].price)} L${projectedRight},${y(item.projection_price_5m)}`
+  );
+  svg.append(expectedPath);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+}
+
+function displayMarketSnapshot(snapshot) {
+  const results = document.getElementById('marketResults');
+  results.replaceChildren();
+  if (snapshot.error) {
+    document.getElementById('marketStatus').textContent = snapshot.error;
+    return;
+  }
+  if (!snapshot.symbols?.length) {
+    document.getElementById('marketStatus').textContent = 'Add symbols to start the market watch.';
+    return;
+  }
+  const checkedAt = snapshot.updated_at ? new Date(snapshot.updated_at).toLocaleTimeString() : 'unknown';
+  document.getElementById('marketStatus').textContent = `Checked ${checkedAt}; quote times are from the source.`;
+  for (const item of snapshot.items || []) {
+    const card = document.createElement('article');
+    card.className = 'market-card';
+    const head = document.createElement('div');
+    head.className = 'market-card-head';
+    const name = document.createElement('strong');
+    name.textContent = item.symbol;
+    head.append(name);
+    if (item.error) {
+      const error = document.createElement('div');
+      error.className = 'market-meta';
+      error.textContent = item.error;
+      card.append(head, error);
+      results.append(card);
+      continue;
+    }
+    const price = document.createElement('span');
+    price.className = 'market-price';
+    price.textContent = formatMarketPrice(item.price, item.currency);
+    head.append(price);
+    const change = document.createElement('span');
+    change.className = 'market-meta';
+    change.textContent = item.change_pct == null
+      ? `Actual value: ${formatMarketPrice(item.price, item.currency)} · day change unavailable`
+      : `Actual value: ${formatMarketPrice(item.price, item.currency)} · day change ${item.change_pct >= 0 ? '+' : ''}${item.change_pct.toFixed(2)}%`;
+    const trendClass = item.trend === 'up' ? 'market-up' : item.trend === 'down' ? 'market-down' : 'market-flat';
+    const trend = document.createElement('div');
+    trend.className = `market-meta ${trendClass}`;
+    trend.textContent =
+      `Expected 5-min trend estimate: ${formatMarketPrice(item.projection_price_5m, item.currency)} · ${item.trend} ${item.projection_change_pct_5m >= 0 ? '+' : ''}${item.projection_change_pct_5m.toFixed(2)}% (not a forecast)`;
+    const timestamp = document.createElement('div');
+    timestamp.className = 'market-meta';
+    timestamp.textContent =
+      `${item.exchange} · 1-min candle at ${new Date(item.quote_timestamp).toLocaleTimeString()}`;
+    const chart = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chart.classList.add('market-chart');
+    chart.setAttribute('role', 'img');
+    chart.setAttribute('aria-label', `${item.symbol} actual intraday prices and five-minute trend estimate`);
+    drawMarketChart(chart, item);
+    card.append(head, change, trend, timestamp, chart);
+    results.append(card);
+  }
+}
+
+async function refreshMarket() {
+  if (!marketSymbols.length || !window.pywebview?.api) return;
+  try {
+    const snapshot = await window.pywebview.api.get_market_snapshot();
+    displayMarketSnapshot(snapshot);
+  } catch (error) {
+    document.getElementById('marketStatus').textContent = 'Market feed unavailable. Try again shortly.';
+    console.warn('Market data request failed:', error);
+  }
+}
+
+document.getElementById('marketForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const marketStatus = document.getElementById('marketStatus');
+  marketStatus.textContent = 'Saving watchlist…';
+  try {
+    const result = await window.pywebview.api.set_market_watchlist(
+      document.getElementById('marketSymbolsInput').value
+    );
+    if (result.error) {
+      marketStatus.textContent = result.error;
+      return;
+    }
+    marketSymbols = result.symbols || [];
+    document.getElementById('marketSymbolsInput').value = marketSymbols.join(', ');
+    if (marketSymbols.length) await refreshMarket();
+    else {
+      document.getElementById('marketResults').replaceChildren();
+      marketStatus.textContent = 'Watchlist cleared.';
+    }
+  } catch (error) {
+    marketStatus.textContent = 'Could not save the market watchlist.';
+    console.warn('Market watchlist update failed:', error);
+  }
+});
+setInterval(refreshMarket, 10000);
+
+document.getElementById('productForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const productStatus = document.getElementById('productStatus');
+  productStatus.textContent = 'Opening Buyhatke price history…';
+  try {
+    const result = await window.pywebview.api.open_buyhatke_product(
+      document.getElementById('productUrlInput').value
+    );
+    productStatus.textContent = result.error
+      || (result.opened ? 'Buyhatke opened in your browser.' : 'Buyhatke could not be opened.');
+  } catch (error) {
+    productStatus.textContent = 'Could not open this product in Buyhatke.';
+    console.warn('Buyhatke product request failed:', error);
+  }
+});
+
+function showLocationUnavailable(message) {
+  document.getElementById('locationStatus').textContent = 'Not verified';
+  document.getElementById('locationStatus').classList.remove('verified');
+  document.getElementById('locationPlace').textContent = 'Location not verified';
+  document.getElementById('locationAccuracy').textContent = message;
+}
+
+function showVerifiedLocation(location) {
+  document.getElementById('locationStatus').textContent = 'Verified device fix';
+  document.getElementById('locationStatus').classList.add('verified');
+  document.getElementById('locationPlace').textContent = location.place;
+  document.getElementById('locationAccuracy').textContent =
+    `${location.accuracy} · GPS is not guaranteed`;
+}
+
+async function loadSavedLocation() {
+  try {
+    const location = await window.pywebview.api.get_current_location();
+    if (!location || location.error) {
+      showLocationUnavailable(location?.error || 'No verified location fix is available.');
+      return;
+    }
+    showVerifiedLocation(location);
+  } catch (err) {
+    console.warn('Could not load verified location:', err);
+    showLocationUnavailable('Could not read a verified location fix.');
+  }
+}
+
+document.getElementById('deviceLocationBtn').addEventListener('click', async () => {
+  const button = document.getElementById('deviceLocationBtn');
+  button.disabled = true;
+  button.textContent = 'Checking…';
+  try {
+    await acquireDeviceLocation();
+  } catch (err) {
+    showLocationUnavailable(err.message || 'Could not get a fresh device location.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Find my location';
+  }
+});
+
+async function acquireDeviceLocation() {
+  if (!navigator.geolocation) {
+    throw new Error('This WebView does not provide device geolocation.');
+  }
+  document.getElementById('locationStatus').textContent = 'Checking device';
+  document.getElementById('locationAccuracy').textContent =
+    'Requesting a fresh device fix. Coarse IP-based estimates are rejected.';
+  const permission = await window.pywebview.api.request_device_location();
+  if (permission.error) throw new Error(permission.error);
+  const position = await new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      error => reject(new Error(
+        error.code === error.PERMISSION_DENIED
+          ? 'Location permission denied'
+          : error.code === error.TIMEOUT
+            ? 'No device fix arrived within 8 seconds. Enable OS location services or connect a GNSS receiver.'
+            : 'The device location provider is unavailable.'
+      )),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  });
+  const location = await window.pywebview.api.set_device_location(
+    position.coords.latitude,
+    position.coords.longitude,
+    position.coords.accuracy
+  );
+  if (location.error) throw new Error(location.error);
+  showVerifiedLocation(location);
+  return location;
+}
+
+document.getElementById('googleMapsBtn').addEventListener('click', async () => {
+  const button = document.getElementById('googleMapsBtn');
+  button.disabled = true;
+  button.textContent = 'Finding location…';
+  try {
+    await acquireDeviceLocation();
+    const result = await window.pywebview.api.open_google_maps();
+    if (!result.opened) {
+      document.getElementById('locationAccuracy').textContent =
+        result.error || 'Google Maps could not be opened in the default browser.';
+    }
+  } catch (error) {
+    showLocationUnavailable(error.message || 'Google Maps needs a verified device fix.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Open Google Maps';
+  }
+});
+
+document.getElementById('googleRouteBtn').addEventListener('click', async () => {
+  const result = await window.pywebview.api.open_google_maps_route();
+  if (result.error || !result.opened) {
+    document.getElementById('routeText').textContent =
+      result.error || 'Google Maps could not be opened.';
+  }
+});
+
+const videoPanelEl = document.getElementById('videoPanel');
+const videoFrameEl = document.getElementById('videoFrame');
+document.getElementById('videoCloseBtn').addEventListener('click', () => {
+  videoPanelEl.classList.remove('visible');
+  videoFrameEl.src = '';
+});
+let lastVideoEmbedUrl = null;
+let lastAnswer = null, captionFadeTimeout = null;
+let bridgeInFlight = false;
+
+// Automatic Bridge with Maggie's Backend
+async function bridgeSync() {
+  if (window.pywebview && window.pywebview.api && !bridgeInFlight) {
+    bridgeInFlight = true;
+    if (!locationRequested) {
+      locationRequested = true;
+      loadSavedLocation();
+    }
     try {
       const data = await window.pywebview.api.get_status();
-      currentState = data.state || "idle";
+      lastBridgeError = null;
+      if (!trafficInitialized) {
+        trafficInitialized = true;
+        refreshMarathahalliTraffic();
+      }
+      const voiceStatus = document.getElementById('ownerVoiceStatus');
+      voiceStatus.textContent = !data.flags?.voice_profile_enrolled
+        ? 'Voice: say “learn my voice” to enroll'
+        : data.flags?.owner_voice_match
+          ? 'Last voice: owner similarity match'
+          : 'Last voice: no match';
+      if (!newsLoaded) {
+        newsLoaded = true;
+        loadWorldNews();
+      }
+      if (!marketInitialized) {
+        marketInitialized = true;
+        const watchlist = await window.pywebview.api.get_market_watchlist();
+        if (watchlist.error) {
+          document.getElementById('marketStatus').textContent = watchlist.error;
+        } else {
+          marketSymbols = watchlist.symbols || [];
+          document.getElementById('marketSymbolsInput').value = marketSymbols.join(', ');
+          if (marketSymbols.length) refreshMarket();
+        }
+      }
+      if (!lastTrafficKey) {
+        document.getElementById('routeText').textContent = data.traffic_live_enabled
+          ? 'TomTom live traffic ready'
+          : 'Route-only estimates; live traffic is not configured.';
+      }
 
-      const badge = document.getElementById('stateBadge');
-      badge.textContent = currentState.toUpperCase();
-      badge.className = 'badge ' + currentState;
+      // Automates the 4-color transitions seamlessly
+      if (data.state) {
+        setOrbState(data.state);
+      }
+
+      if (data.answer && data.answer !== lastAnswer) {
+        lastAnswer = data.answer;
+        const caption = document.getElementById('captionText');
+        caption.textContent = data.answer;
+        caption.classList.add('active');
+        if (captionFadeTimeout) clearTimeout(captionFadeTimeout);
+        captionFadeTimeout = setTimeout(() => caption.classList.remove('active'), 6000);
+      }
 
       if (data.metrics) {
         const m = data.metrics;
+        document.getElementById('synapseEntropy').textContent = ((m.cpu_pct || 0) / 100).toFixed(3);
+        document.getElementById('synapseHarmonics').textContent = currentState === 'idle' ? 'Stable' : 'Dynamic';
         document.getElementById('cpuPct').textContent = (m.cpu_pct || 0) + '%';
         document.getElementById('loadAvg').textContent = (m.load_avg || [0,0,0]).join(', ');
-        document.getElementById('ramInfo').textContent = (m.ram_used_gb || 0) + ' GB / ' + (m.ram_total_gb || 0) + ' GB (' + (m.ram_pct || 0) + '%)';
-        document.getElementById('swapInfo').textContent = (m.swap_used_gb || 0) + ' GB / ' + (m.swap_total_gb || 0) + ' GB';
-        document.getElementById('diskInfo').textContent = (m.disk_used_gb || 0) + ' GB / ' + (m.disk_total_gb || 0) + ' GB (' + (m.disk_pct || 0) + '%)';
+        document.getElementById('ramInfo').textContent = (m.ram_used_gb || 0) + ' / ' + (m.ram_total_gb || 0) + ' GB';
+        document.getElementById('swapInfo').textContent = (m.swap_used_gb || 0) + ' / ' + (m.swap_total_gb || 0) + ' GB';
+        document.getElementById('diskInfo').textContent = (m.disk_used_gb || 0) + ' / ' + (m.disk_total_gb || 0) + ' GB';
         document.getElementById('cpuTemp').textContent = Math.round(m.cpu_temp || 45) + '°C';
-        document.getElementById('batInfo').textContent = (m.battery_pct || 100) + '%' + (m.charging ? ' [Charging]' : '');
+        document.getElementById('batInfo').textContent = (m.battery_pct || 100) + '%' + (m.charging ? ' (chg)' : '');
         document.getElementById('pingGw').textContent = m.ping_gateway || '--';
-        document.getElementById('pingDns').textContent = m.ping_dns || '--';
 
         if (m.top_processes) {
-          const tbody = document.getElementById('procRows');
-          tbody.innerHTML = m.top_processes.map(p => `<tr><td>${p.name}</td><td>${p.cpu}%</td><td>${p.ram_mb}MB</td></tr>`).join('');
+          document.getElementById('procRows').innerHTML = m.top_processes
+            .map(p => `<tr><td>${p.name}</td><td>${p.cpu}%</td><td>${p.ram_mb}MB</td></tr>`).join('');
         }
       }
 
+      if (data.ai_info) {
+        document.getElementById('aiModel').textContent = data.ai_info.model || '--';
+        document.getElementById('aiBackend').textContent = data.ai_info.backend || '--';
+        document.getElementById('aiLatency').textContent = data.ai_info.latency || '--';
+        document.getElementById('synapseLatency').textContent = data.ai_info.latency || '--';
+      }
+
       if (data.services) {
-        const container = document.getElementById('servicesList');
-        container.innerHTML = Object.entries(data.services).map(([name, status]) => {
+        document.getElementById('servicesList').innerHTML = Object.entries(data.services).map(([name, status]) => {
           const isRunning = status === 'Running';
-          return `<div class="data-row"><span>${name}</span><span class="status-tag ${isRunning ? 'running' : 'stopped'}">${isRunning ? '&bullet; Running' : '&bullet; Stopped'}</span></div>`;
+          return `<div class="side-row"><span>${name}</span><span class="side-status ${isRunning ? 'running' : 'stopped'}">${isRunning ? '&bull; Running' : '&bull; Stopped'}</span></div>`;
         }).join('');
       }
 
-      // Render Enhanced High-Visibility Traffic Line
-      if (data.traffic_map && data.traffic_map.origin_lat) {
+      if (data.traffic_map && Number.isFinite(data.traffic_map.origin_lat)) {
         const tm = data.traffic_map;
-        if (routeLayer) map.removeLayer(routeLayer);
-        
-        const p1 = [tm.origin_lat, tm.origin_lon];
-        const p2 = [tm.dest_lat, tm.dest_lon];
-
-        // Dynamic Color Coding Based on Traffic Multiplier
-        let lineColor = '#6bffb0'; // Green = Clear
-        if (tm.traffic_level === 'HEAVY') lineColor = '#ff5b6a'; // Red = Heavy
-        else if (tm.traffic_level === 'MODERATE') lineColor = '#f0a860'; // Yellow = Moderate
-
-        document.getElementById('trafficEta').textContent = tm.estimated_mins + " mins";
-
-        routeLayer = L.layerGroup([
-          L.marker(p1),
-          L.marker(p2),
-          L.polyline([p1, p2], { color: lineColor, weight: 6, opacity: 0.9 })
-        ]).addTo(map);
-
-        map.invalidateSize();
-        map.fitBounds([p1, p2], { padding: [15, 15] });
+        const trafficKey = `${tm.origin_name}|${tm.dest_name}|${tm.estimated_mins}|${tm.traffic_delay_mins}|${tm.traffic_live}`;
+        if (trafficKey !== lastTrafficKey) {
+          lastTrafficKey = trafficKey;
+          const summary = document.getElementById('routeSummary');
+          summary.classList.add('visible');
+          document.getElementById('routeText').textContent =
+            `${tm.origin_name} → ${tm.dest_name}${tm.traffic_live ? ' · live traffic' : ' · route only'}`;
+          if (tm.traffic_live) {
+            document.getElementById('routeEta').textContent =
+              `${tm.estimated_mins} min (+${tm.traffic_delay_mins})`;
+          } else {
+            document.getElementById('routeEta').textContent =
+              `${tm.estimated_mins} min · baseline`;
+          }
+        }
       }
 
-      targetScale = currentState === "speaking" ? 1.25 : currentState === "listening" ? 1.1 : 1.0;
-
-      if (data.answer && lastAnswer !== null && data.answer !== lastAnswer) {
-        lastAnswer = data.answer;
-        const pop = document.getElementById('transcript');
-        pop.textContent = data.answer;
-        pop.classList.add('visible');
-        if (fadeTimeout) clearTimeout(fadeTimeout);
-        fadeTimeout = setTimeout(() => pop.classList.remove('visible'), 5000);
-      } else if (lastAnswer === null) {
-        lastAnswer = data.answer || "";
+      if (data.video_embed_url && data.video_embed_url !== lastVideoEmbedUrl) {
+        lastVideoEmbedUrl = data.video_embed_url;
+        videoFrameEl.src = data.video_embed_url;
+        videoPanelEl.classList.add('visible');
       }
-    } catch(e) {}
+
+      if (data.logs) {
+        const term = document.getElementById('terminalLog');
+        term.innerHTML = data.logs.map(l => `<div>${l.replace(/</g, '&lt;')}</div>`).join('');
+        term.scrollTop = term.scrollHeight;
+      }
+    } catch(err) {
+      const message = String(err);
+      if (message !== lastBridgeError) {
+        console.warn('Dashboard bridge update failed:', err);
+        lastBridgeError = message;
+      }
+    } finally {
+      bridgeInFlight = false;
+    }
   }
 }
+setInterval(bridgeSync, 1000);
 
-setInterval(syncState, 500);
 function updateClock() { document.getElementById('clockText').textContent = new Date().toLocaleTimeString(); }
 setInterval(updateClock, 1000); updateClock();
 </script>

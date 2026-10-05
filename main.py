@@ -20,19 +20,19 @@ except Exception:
     pass
 
 import speech_recognition as sr
-from rich.console import Console
 
 import alarms
+import applog
 import brain
+import greeting
 import gui
+import language
 import listener
 import memory
 import metrics
 import routines
 from speaker import speak
 import status
-
-console = Console()
 _PID_FILE = os.path.join(os.path.dirname(__file__), "data", "maggie.pid")
 
 def _cleanup_and_exit(signum=None, frame=None):
@@ -52,9 +52,9 @@ def voice_loop():
     status.set_status("idle", "Calibrating Audio...")
     listener.calibrate(mic)
 
-    console.print("[bold magenta]Maggie Systems Online.[/bold magenta]\n")
+    applog.log("Maggie Systems Online.", style="bold magenta")
     status.set_status("idle", "Online")
-    speak("Hello Kavin, Maggie is online.")
+    speak(greeting.build_greeting("Kavin"))
 
     while not status.get_flags()["exit_requested"]:
         try:
@@ -73,10 +73,39 @@ def voice_loop():
 
             q_lower = query.lower()
 
+            if any(
+                phrase in q_lower
+                for phrase in ("learn my voice", "enroll my voice")
+            ):
+                status.set_status("listening", "Enrolling owner voice...")
+                speak(
+                    "I will listen to five short samples now. Only derived voice features "
+                    "are saved locally; the audio is discarded. This is not secure authentication."
+                )
+                try:
+                    enrolled = listener.enroll_owner(mic)
+                except Exception as e:
+                    applog.log(f"Voice enrollment failed: {e}", style="red")
+                    enrolled = False
+                status.set_flag("voice_profile_enrolled", enrolled)
+                status.set_flag("owner_voice_match", False)
+                speak(
+                    "Your local voice profile is ready."
+                    if enrolled
+                    else "I could not complete voice enrollment. Please try again in a quiet place."
+                )
+                continue
+
             # Sleep Mode Verification
             if flags["sleeping"]:
                 if "wake up" in q_lower or "maggie wake up" in q_lower:
                     status.set_flag("sleeping", False)
+                    try:
+                        import voice_identity
+
+                        status.set_flag("voice_profile_enrolled", voice_identity.is_enrolled())
+                    except Exception as e:
+                        applog.log(f"Could not inspect the local voice profile: {e}", style="yellow")
                     status.set_status("speaking", "Waking Up")
                     speak("I am awake and listening, Kavin.")
                 continue
@@ -94,13 +123,16 @@ def voice_loop():
             status.set_status("speaking", "Responding...")
 
             if answer and not flags["muted"]:
-                speak(answer)
+                # Same mode set_mode() persisted -- consistent with what
+                # was used to decode input and prompt the LLM, not a fresh
+                # per-reply guess.
+                speak(answer, voice=language.tts_voice_for(language.get_mode()))
 
             if status.get_flags()["exit_requested"]:
                 _cleanup_and_exit()
 
         except Exception as e:
-            console.print(f"[red]Voice Loop Exception: {e}[/red]")
+            applog.log(f"Voice Loop Exception: {e}", style="red")
             time.sleep(0.4)
 
 def main():
@@ -112,17 +144,39 @@ def main():
     status.set_flag("paused", False)
     status.set_flag("sleeping", False)
 
-    threading.Thread(target=voice_loop, daemon=True).start()
-    alarms.start(on_trigger=speak)
-    routines.start(on_trigger=speak)
-    metrics.start(on_critical_failure=speak)
+    # Voice, reminders, and telemetry are useful even if the dashboard cannot
+    # obtain a native GUI thread (common on constrained Linux systems).
+    voice_thread = threading.Thread(target=voice_loop, name="maggie-voice", daemon=True)
+    try:
+        voice_thread.start()
+    except RuntimeError as e:
+        applog.log(f"Could not start voice worker: {e}; running voice loop in main thread.", style="yellow")
+        # Avoid starting auxiliary threads when the process has no spare
+        # thread slots; the voice loop is the core function.
+        voice_loop()
+        return
+
+    for label, start_worker in (
+        ("alarms", lambda: alarms.start(on_trigger=speak)),
+        ("routines", lambda: routines.start(on_trigger=speak)),
+        ("telemetry", lambda: metrics.start(on_critical_failure=speak)),
+    ):
+        try:
+            start_worker()
+        except RuntimeError as e:
+            applog.log(f"Could not start {label} worker: {e}", style="yellow")
 
     try:
         gui.run()
     except Exception as e:
-        console.print(f"[yellow]GUI Exception: {e}[/yellow]")
+        applog.log(f"GUI unavailable: {e}. Voice assistant will continue without the dashboard.", style="yellow")
+        # Keep the application alive in headless mode rather than exiting after
+        # a Qt/PyQt thread creation failure.
+        while voice_thread.is_alive() and not status.get_flags().get("exit_requested", False):
+            voice_thread.join(timeout=0.5)
     finally:
-        _cleanup_and_exit()
+        if not status.get_flags().get("exit_requested", False):
+            _cleanup_and_exit()
 
 if __name__ == "__main__":
     main()

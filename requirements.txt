@@ -1,6 +1,6 @@
-SpeechRecognition==3.10.4
+SpeechRecognition==3.17.0
 edge-tts>=7.2.8
-duckduckgo-search==6.1.0
+duckduckgo-search==5.3.1
 requests==2.32.3
 beautifulsoup4>=4.12.0
 python-dotenv==1.0.1
@@ -8,6 +8,7 @@ rich==13.7.1
 psutil
 pywebview
 pywhatkit
+yt-dlp
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
@@ -16,3 +17,8 @@ google-auth-oauthlib
 scikit-learn>=1.4.0
 joblib>=1.3.0
 pypdf>=4.2.0
+groq
+pyaudio
+PyQt6
+PyQt6-WebEngine
+qtpy

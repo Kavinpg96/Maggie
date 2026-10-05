@@ -5,12 +5,13 @@ import asyncio
 import json
 import os
 import platform
-import shutil
 import subprocess
 import threading
 import edge_tts
-import applog
+from rich.console import Console
 from config import TTS_VOICE, AUDIO_OUT_PATH, VOICE_POOL
+
+console = Console()
 _VOICE_STATE_PATH = os.path.join(os.path.dirname(__file__), "data", "voice_state.json")
 _speak_lock = threading.Lock()
 
@@ -48,47 +49,33 @@ async def _generate_audio(text: str, path: str, voice: str):
 
 def _play_audio(path: str):
     system = platform.system()
-    if system == "Linux":
-        players = (
-            ("mpg123", ["-q", path]),
-            ("ffplay", ["-nodisp", "-autoexit", "-loglevel", "error", path]),
-            ("mpv", ["--no-video", "--really-quiet", path]),
-        )
-        for player, args in players:
-            executable = shutil.which(player)
-            if executable:
-                subprocess.run([executable, *args], check=True)
-                return
-        raise RuntimeError(
-            "No supported MP3 player was found. Install one, for example: "
-            "sudo apt install mpg123"
-        )
-    if system == "Darwin":
-        subprocess.run(["afplay", path], check=True)
-        return
-    os.startfile(path)
+    try:
+        if system == "Linux":
+            with open(os.devnull, "w") as devnull:
+                subprocess.run(
+                    ["mpg123", "-o", "pulse", "-q", path],
+                    stdout=devnull,
+                    stderr=devnull,
+                    check=False,
+                )
+        elif system == "Darwin":
+            subprocess.run(["afplay", path], check=False)
+        else:
+            os.startfile(path)
+    except Exception:
+        pass
 
 
-def speak(text: str, voice: str = None):
-    """Main entry point used across the app to speak text out loud.
-
-    Pass `voice` to override the saved/cycled voice for this call only
-    (used for Tamil replies) — the saved voice preference is untouched
-    and still used whenever `voice` is omitted.
-    """
+def speak(text: str):
+    """Main entry point used across the app to speak text out loud."""
     if not text:
         return
 
     with _speak_lock:
-        applog.log(f"Maggie: {text}", style="bold cyan")
-        selected_voice = voice or _load_current_voice()
+        console.print(f"[bold cyan]Maggie:[/bold cyan] {text}")
+        voice = _load_current_voice()
         try:
-            asyncio.run(_generate_audio(text, AUDIO_OUT_PATH, selected_voice))
-        except Exception as e:
-            applog.log(f"Speech synthesis error: {e}", style="red")
-            return
-
-        try:
+            asyncio.run(_generate_audio(text, AUDIO_OUT_PATH, voice))
             _play_audio(AUDIO_OUT_PATH)
         except Exception as e:
-            applog.log(f"Audio playback error: {e}", style="red")
+            console.print(f"[red]Audio synthesis error: {e}[/red]")

@@ -34,6 +34,8 @@ _state = {
         "muted": False,
         "paused": False,
         "sleeping": False,
+        "owner_voice_match": False,
+        "voice_profile_enrolled": False,
     },
     "traffic_map": None
 }
